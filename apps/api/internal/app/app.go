@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/bmardale/skjul/internal/config"
+	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {
@@ -22,9 +24,11 @@ type App struct {
 	server *http.Server
 	config *config.Config
 	logger *slog.Logger
+	db *pgxpool.Pool
+	queries *sqlc.Queries
 }
 
-func New(cfg *config.Config, logger *slog.Logger) *App {
+func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool) *App {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -41,6 +45,8 @@ func New(cfg *config.Config, logger *slog.Logger) *App {
 		server: httpSrv,
 		config: cfg,
 		logger: logger,
+		db: db,
+		queries: sqlc.New(db),
 	}
 
 	app.setupRoutes()
