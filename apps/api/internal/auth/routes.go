@@ -20,4 +20,6 @@ func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) {
 	protected := r.Group("")
 	protected.Use(RequireAuth(svc))
 	protected.GET("/me", handler.Me)
+	protected.GET("/sessions", handler.ListSessions)
+	protected.DELETE("/sessions/:id", handler.DeleteSession)
 }

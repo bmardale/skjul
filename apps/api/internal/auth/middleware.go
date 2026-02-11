@@ -10,6 +10,7 @@ import (
 const (
 	SessionCookieName = "session_token"
 	UserIDKey         = "user_id"
+	SessionIDKey      = "session_id"
 )
 
 func RequireAuth(service *Service) gin.HandlerFunc {
@@ -24,7 +25,7 @@ func RequireAuth(service *Service) gin.HandlerFunc {
 			return
 		}
 
-		userID, err := service.GetUserIDFromSession(c.Request.Context(), token)
+		userID, sessionID, err := service.GetUserIDFromSession(c.Request.Context(), token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, errorResponse{
 				Code:    "UNAUTHORIZED",
@@ -35,12 +36,22 @@ func RequireAuth(service *Service) gin.HandlerFunc {
 		}
 
 		c.Set(UserIDKey, userID)
+		c.Set(SessionIDKey, sessionID)
 		c.Next()
 	}
 }
 
 func GetUserID(c *gin.Context) (uuid.UUID, bool) {
 	v, ok := c.Get(UserIDKey)
+	if !ok {
+		return uuid.Nil, false
+	}
+	id, ok := v.(uuid.UUID)
+	return id, ok
+}
+
+func GetSessionID(c *gin.Context) (uuid.UUID, bool) {
+	v, ok := c.Get(SessionIDKey)
 	if !ok {
 		return uuid.Nil, false
 	}

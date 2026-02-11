@@ -49,6 +49,20 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash string) error {
 	return err
 }
 
+const deleteSessionByID = `-- name: DeleteSessionByID :exec
+DELETE FROM sessions WHERE id = $1 AND user_id = $2
+`
+
+type DeleteSessionByIDParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteSessionByID(ctx context.Context, arg DeleteSessionByIDParams) error {
+	_, err := q.db.Exec(ctx, deleteSessionByID, arg.ID, arg.UserID)
+	return err
+}
+
 const getSessionByToken = `-- name: GetSessionByToken :one
 SELECT id, user_id, token_hash FROM sessions WHERE token_hash = $1
 `
@@ -98,6 +112,38 @@ func (q *Queries) GetValidSessionByToken(ctx context.Context, tokenHash string) 
 	var i GetValidSessionByTokenRow
 	err := row.Scan(&i.ID, &i.UserID, &i.TokenHash)
 	return i, err
+}
+
+const listSessionsByUserID = `-- name: ListSessionsByUserID :many
+SELECT id, created_at, expires_at FROM sessions
+WHERE user_id = $1 AND expires_at > now()
+ORDER BY created_at DESC
+`
+
+type ListSessionsByUserIDRow struct {
+	ID        uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]ListSessionsByUserIDRow, error) {
+	rows, err := q.db.Query(ctx, listSessionsByUserID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSessionsByUserIDRow
+	for rows.Next() {
+		var i ListSessionsByUserIDRow
+		if err := rows.Scan(&i.ID, &i.CreatedAt, &i.ExpiresAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateSessionTokenHash = `-- name: UpdateSessionTokenHash :exec

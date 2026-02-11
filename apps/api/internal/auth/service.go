@@ -94,13 +94,13 @@ func (s *Service) Logout(ctx context.Context, rawToken string) {
 	_ = s.queries.DeleteSession(ctx, hash)
 }
 
-func (s *Service) GetUserIDFromSession(ctx context.Context, rawToken string) (uuid.UUID, error) {
+func (s *Service) GetUserIDFromSession(ctx context.Context, rawToken string) (userID uuid.UUID, sessionID uuid.UUID, err error) {
 	hash := HashSessionToken(rawToken)
 	row, err := s.queries.GetValidSessionByToken(ctx, hash)
 	if err != nil {
-		return uuid.Nil, ErrInvalidSession
+		return uuid.Nil, uuid.Nil, ErrInvalidSession
 	}
-	return row.UserID, nil
+	return row.UserID, row.ID, nil
 }
 
 func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserInfo, error) {
@@ -117,4 +117,40 @@ func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserInfo, error) 
 type UserInfo struct {
 	ID       uuid.UUID
 	Username string
+}
+
+type SessionInfo struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Current   bool
+}
+
+func (s *Service) ListSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) ([]SessionInfo, error) {
+	rows, err := s.queries.ListSessionsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	out := make([]SessionInfo, 0, len(rows))
+	for _, r := range rows {
+		info := SessionInfo{
+			ID:      r.ID,
+			Current: r.ID == currentSessionID,
+		}
+		if r.CreatedAt.Valid {
+			info.CreatedAt = r.CreatedAt.Time
+		}
+		if r.ExpiresAt.Valid {
+			info.ExpiresAt = r.ExpiresAt.Time
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func (s *Service) DeleteSessionByID(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID) error {
+	return s.queries.DeleteSessionByID(ctx, sqlc.DeleteSessionByIDParams{
+		ID:     sessionID,
+		UserID: userID,
+	})
 }

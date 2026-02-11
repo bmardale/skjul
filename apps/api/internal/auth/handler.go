@@ -4,8 +4,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const sessionCookieMaxAge = 7 * 24 * 3600 // 7 days
@@ -41,6 +43,13 @@ type loginResponse struct {
 type meResponse struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
+}
+
+type sessionResponse struct {
+	ID        string `json:"id"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+	Current   bool   `json:"current"`
 }
 
 type errorResponse struct {
@@ -164,5 +173,73 @@ func (h *Handler) Logout(c *gin.Context) {
 		h.service.Logout(c.Request.Context(), token)
 	}
 	h.clearSessionCookie(c)
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListSessions(c *gin.Context) {
+	userID, ok := GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, errorResponse{
+			Code:    "UNAUTHORIZED",
+			Message: "missing or invalid session",
+		})
+		return
+	}
+	sessionID, _ := GetSessionID(c)
+
+	sessions, err := h.service.ListSessions(c.Request.Context(), userID, sessionID)
+	if err != nil {
+		h.logger.Error("list sessions failed", "error", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: "failed to list sessions",
+		})
+		return
+	}
+
+	resp := make([]sessionResponse, 0, len(sessions))
+	for _, s := range sessions {
+		resp = append(resp, sessionResponse{
+			ID:        s.ID.String(),
+			CreatedAt: s.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: s.ExpiresAt.Format(time.RFC3339),
+			Current:   s.Current,
+		})
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) DeleteSession(c *gin.Context) {
+	userID, ok := GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, errorResponse{
+			Code:    "UNAUTHORIZED",
+			Message: "missing or invalid session",
+		})
+		return
+	}
+	sessionID, _ := GetSessionID(c)
+
+	targetID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{
+			Code:    "INVALID_REQUEST",
+			Message: "invalid session id",
+		})
+		return
+	}
+
+	if err := h.service.DeleteSessionByID(c.Request.Context(), userID, targetID); err != nil {
+		h.logger.Error("delete session failed", "error", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: "failed to delete session",
+		})
+		return
+	}
+
+	if sessionID == targetID {
+		h.clearSessionCookie(c)
+	}
 	c.Status(http.StatusNoContent)
 }
