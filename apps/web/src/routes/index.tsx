@@ -1,3 +1,4 @@
+import { ModeToggle } from "@/components/mode-toggle";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
@@ -7,7 +8,8 @@ export const Route = createFileRoute("/")({
 function Index() {
   return (
     <div className="p-2">
-      <h3>index</h3>
+      <ModeToggle />
+      <h3>Index</h3>
     </div>
   );
 }
