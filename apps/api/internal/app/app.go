@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/bmardale/skjul/internal/config"
-	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,8 +23,7 @@ type App struct {
 	server *http.Server
 	config *config.Config
 	logger *slog.Logger
-	db *pgxpool.Pool
-	queries *sqlc.Queries
+	db     *pgxpool.Pool
 }
 
 func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool) *App {
@@ -45,8 +43,7 @@ func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool) *App {
 		server: httpSrv,
 		config: cfg,
 		logger: logger,
-		db: db,
-		queries: sqlc.New(db),
+		db:     db,
 	}
 
 	app.setupRoutes()

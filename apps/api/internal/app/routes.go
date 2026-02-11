@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 
+	"github.com/bmardale/skjul/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -11,6 +12,8 @@ func (a *App) setupRoutes() {
 
 	v1 := a.router.Group("/api/v1")
 	v1.GET("/health", a.healthCheck)
+
+	auth.RegisterRoutes(v1, a.db, a.logger)
 }
 
 func (a *App) healthCheck(c *gin.Context) {

@@ -11,6 +11,9 @@ SELECT id, user_id, token_hash FROM sessions WHERE user_id = $1;
 -- name: GetSessionByToken :one
 SELECT id, user_id, token_hash FROM sessions WHERE token_hash = $1;
 
+-- name: GetValidSessionByToken :one
+SELECT id, user_id, token_hash FROM sessions WHERE token_hash = $1 AND expires_at > now();
+
 -- name: UpdateSessionTokenHash :exec
 UPDATE sessions SET token_hash = $1 WHERE id = $2;
 

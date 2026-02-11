@@ -83,6 +83,23 @@ func (q *Queries) GetSessionByUserId(ctx context.Context, userID uuid.UUID) (Get
 	return i, err
 }
 
+const getValidSessionByToken = `-- name: GetValidSessionByToken :one
+SELECT id, user_id, token_hash FROM sessions WHERE token_hash = $1 AND expires_at > now()
+`
+
+type GetValidSessionByTokenRow struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash string
+}
+
+func (q *Queries) GetValidSessionByToken(ctx context.Context, tokenHash string) (GetValidSessionByTokenRow, error) {
+	row := q.db.QueryRow(ctx, getValidSessionByToken, tokenHash)
+	var i GetValidSessionByTokenRow
+	err := row.Scan(&i.ID, &i.UserID, &i.TokenHash)
+	return i, err
+}
+
 const updateSessionTokenHash = `-- name: UpdateSessionTokenHash :exec
 UPDATE sessions SET token_hash = $1 WHERE id = $2
 `
