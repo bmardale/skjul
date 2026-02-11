@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 
+	"github.com/bmardale/skjul/internal/app"
 	"github.com/bmardale/skjul/internal/config"
 	"github.com/bmardale/skjul/internal/logger"
 )
@@ -18,5 +20,8 @@ func main() {
 		log.Fatalf("failed to setup logger: %v", err)
 	}
 
-	slog.Info("starting skjul", "host", cfg.HTTP.Host, "port", cfg.HTTP.Port)
+	application := app.New(cfg, slog)
+	if err := application.Start(context.Background()); err != nil {
+		log.Fatalf("application err: %v", err)
+	}
 }
