@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const sessionExpiry = 30 * 24 * time.Hour
+const sessionExpiry = 7 * 24 * time.Hour
 
 var (
 	ErrUsernameTaken      = errors.New("username already taken")
@@ -36,15 +36,22 @@ type LoginResult struct {
 	Username string
 }
 
-func (s *Service) Register(ctx context.Context, username, password string) (uuid.UUID, error) {
-	hash, err := HashPassword(password)
+type LoginChallenge struct {
+	Salt []byte
+}
+
+func (s *Service) Register(ctx context.Context, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
+	authHash, err := HashAuthKey(authKey)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("hash password: %w", err)
+		return uuid.Nil, fmt.Errorf("hash auth key: %w", err)
 	}
 
 	id, err := s.queries.CreateUser(ctx, sqlc.CreateUserParams{
-		Username:     username,
-		PasswordHash: hash,
+		Username:          username,
+		AuthHash:          authHash,
+		Salt:              salt,
+		EncryptedVaultKey: encryptedVaultKey,
+		VaultKeyNonce:     vaultKeyNonce,
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -57,13 +64,23 @@ func (s *Service) Register(ctx context.Context, username, password string) (uuid
 	return id, nil
 }
 
-func (s *Service) Login(ctx context.Context, username, password string) (*LoginResult, error) {
+func (s *Service) GetLoginChallenge(ctx context.Context, username string) (*LoginChallenge, error) {
+	row, err := s.queries.GetLoginChallengeByUsername(ctx, username)
+	if err != nil {
+		return nil, ErrInvalidCredentials
+	}
+	return &LoginChallenge{
+		Salt: row.Salt,
+	}, nil
+}
+
+func (s *Service) Login(ctx context.Context, username, authKey string) (*LoginResult, error) {
 	user, err := s.queries.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
 
-	ok, err := VerifyPassword(user.PasswordHash, password)
+	ok, err := VerifyAuthKey(user.AuthHash, authKey)
 	if err != nil || !ok {
 		return nil, ErrInvalidCredentials
 	}
@@ -109,14 +126,22 @@ func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserInfo, error) 
 		return nil, err
 	}
 	return &UserInfo{
-		ID:       row.ID,
-		Username: row.Username,
+		ID:                row.ID,
+		Username:          row.Username,
+		Salt:              row.Salt,
+		EncryptedVaultKey: row.EncryptedVaultKey,
+		VaultKeyNonce:     row.VaultKeyNonce,
+		CreatedAt:         row.CreatedAt.Time,
 	}, nil
 }
 
 type UserInfo struct {
-	ID       uuid.UUID
-	Username string
+	ID                uuid.UUID
+	Username          string
+	Salt              []byte
+	EncryptedVaultKey []byte
+	VaultKeyNonce     []byte
+	CreatedAt         time.Time
 }
 
 type SessionInfo struct {
@@ -153,4 +178,8 @@ func (s *Service) DeleteSessionByID(ctx context.Context, userID uuid.UUID, sessi
 		ID:     sessionID,
 		UserID: userID,
 	})
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, userID uuid.UUID) error {
+	return s.queries.DeleteUser(ctx, userID)
 }

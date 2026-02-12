@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,9 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
+import { api, getApiError } from "@/lib/api";
+import { deriveLoginKeys, decryptVaultKey } from "@/lib/crypto";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
   component: Login,
@@ -23,6 +27,10 @@ const loginSchema = z.object({
 });
 
 function Login() {
+  const { setVaultKey, refetchUser } = useAuth();
+  const navigate = useNavigate();
+  const [formError, setFormError] = useState<string | null>(null);
+
   const form = useForm({
     defaultValues: {
       username: "",
@@ -32,8 +40,49 @@ function Login() {
       onSubmit: loginSchema,
     },
     onSubmit: async ({ value }) => {
-      // TODO: wire up login API
-      console.log("login", value);
+      setFormError(null);
+
+      try {
+        // 1. Get challenge (salt only)
+        const challenge = await api.loginChallenge({
+          username: value.username,
+        });
+
+        // 2. Derive masterKey + authKey from password + salt
+        const { masterKey, authKey } = await deriveLoginKeys(
+          value.password,
+          challenge.salt,
+        );
+
+        // 3. Authenticate with derived auth key (sets session cookie)
+        await api.login({
+          username: value.username,
+          authKey,
+        });
+
+        // 4. Fetch encrypted vault key from /me (now authenticated)
+        const me = await api.me();
+
+        // 5. Decrypt vault key with masterKey still in memory
+        const vaultKey = await decryptVaultKey(
+          masterKey,
+          me.encryptedVaultKey,
+          me.vaultKeyNonce,
+        );
+
+        setVaultKey(vaultKey);
+        await refetchUser();
+
+        // 6. Redirect to dashboard
+        navigate({ to: "/" });
+      } catch (err) {
+        const apiErr = getApiError(err);
+        if (apiErr?.code === "INVALID_CREDENTIALS") {
+          setFormError("Invalid username or password.");
+        } else {
+          setFormError("Something went wrong. Please try again.");
+        }
+      }
     },
   });
 
@@ -108,6 +157,12 @@ function Login() {
                 );
               }}
             />
+
+            {formError && (
+              <p role="alert" className="text-sm text-destructive text-center">
+                {formError}
+              </p>
+            )}
 
             <Separator />
 

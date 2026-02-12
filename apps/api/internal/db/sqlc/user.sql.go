@@ -14,19 +14,28 @@ import (
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    username, password_hash
+    username, auth_hash, salt, encrypted_vault_key, vault_key_nonce
 ) VALUES (
-    $1, $2
+    $1, $2, $3, $4, $5
 ) RETURNING id
 `
 
 type CreateUserParams struct {
-	Username     string
-	PasswordHash string
+	Username          string
+	AuthHash          string
+	Salt              []byte
+	EncryptedVaultKey []byte
+	VaultKeyNonce     []byte
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Username, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Username,
+		arg.AuthHash,
+		arg.Salt,
+		arg.EncryptedVaultKey,
+		arg.VaultKeyNonce,
+	)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
@@ -41,15 +50,34 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getLoginChallengeByUsername = `-- name: GetLoginChallengeByUsername :one
+SELECT salt, encrypted_vault_key, vault_key_nonce FROM users WHERE username = $1
+`
+
+type GetLoginChallengeByUsernameRow struct {
+	Salt              []byte
+	EncryptedVaultKey []byte
+	VaultKeyNonce     []byte
+}
+
+func (q *Queries) GetLoginChallengeByUsername(ctx context.Context, username string) (GetLoginChallengeByUsernameRow, error) {
+	row := q.db.QueryRow(ctx, getLoginChallengeByUsername, username)
+	var i GetLoginChallengeByUsernameRow
+	err := row.Scan(&i.Salt, &i.EncryptedVaultKey, &i.VaultKeyNonce)
+	return i, err
+}
+
 const getUser = `-- name: GetUser :one
-SELECT id, username, password_hash, created_at FROM users WHERE id = $1
+SELECT id, username, salt, encrypted_vault_key, vault_key_nonce, created_at FROM users WHERE id = $1
 `
 
 type GetUserRow struct {
-	ID           uuid.UUID
-	Username     string
-	PasswordHash string
-	CreatedAt    pgtype.Timestamptz
+	ID                uuid.UUID
+	Username          string
+	Salt              []byte
+	EncryptedVaultKey []byte
+	VaultKeyNonce     []byte
+	CreatedAt         pgtype.Timestamptz
 }
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error) {
@@ -58,31 +86,27 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
-		&i.PasswordHash,
+		&i.Salt,
+		&i.EncryptedVaultKey,
+		&i.VaultKeyNonce,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, password_hash, created_at FROM users WHERE username = $1
+SELECT id, username, auth_hash FROM users WHERE username = $1
 `
 
 type GetUserByUsernameRow struct {
-	ID           uuid.UUID
-	Username     string
-	PasswordHash string
-	CreatedAt    pgtype.Timestamptz
+	ID       uuid.UUID
+	Username string
+	AuthHash string
 }
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUserByUsernameRow, error) {
 	row := q.db.QueryRow(ctx, getUserByUsername, username)
 	var i GetUserByUsernameRow
-	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.PasswordHash,
-		&i.CreatedAt,
-	)
+	err := row.Scan(&i.ID, &i.Username, &i.AuthHash)
 	return i, err
 }

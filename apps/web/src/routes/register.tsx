@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,9 @@ import {
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { generateRegistrationData, deriveLoginKeys, decryptVaultKey } from "@/lib/crypto";
+import { api, getApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/register")({
   component: Register,
@@ -32,6 +36,10 @@ const registerSchema = z.object({
 });
 
 function Register() {
+  const { setVaultKey, refetchUser } = useAuth();
+  const navigate = useNavigate();
+  const [formError, setFormError] = useState<string | null>(null);
+
   const form = useForm({
     defaultValues: {
       username: "",
@@ -41,8 +49,39 @@ function Register() {
       onSubmit: registerSchema,
     },
     onSubmit: async ({ value }) => {
-      // TODO: wire up registration API
-      console.log("register", value);
+      setFormError(null);
+
+      try {
+        const registrationData = await generateRegistrationData(value.password);
+        await api.register({
+          username: value.username,
+          authKey: registrationData.authKey,
+          salt: registrationData.salt,
+          encryptedVaultKey: registrationData.encryptedVaultKey,
+          vaultKeyNonce: registrationData.vaultKeyNonce,
+        });
+
+        const { masterKey } = await deriveLoginKeys(
+          value.password,
+          registrationData.salt,
+        );
+        const vaultKey = await decryptVaultKey(
+          masterKey,
+          registrationData.encryptedVaultKey,
+          registrationData.vaultKeyNonce,
+        );
+
+        setVaultKey(vaultKey);
+        await refetchUser();
+        navigate({ to: "/" });
+      } catch (err) {
+        const apiErr = getApiError(err);
+        if (apiErr?.code === "USERNAME_TAKEN") {
+          setFormError("Username is already taken.");
+        } else {
+          setFormError("Something went wrong. Please try again.");
+        }
+      }
     },
   });
 
@@ -119,7 +158,12 @@ function Register() {
               }}
             />
 
-            {/* E2EE data loss warning */}
+            {formError && (
+              <p role="alert" className="text-sm text-destructive text-center">
+                {formError}
+              </p>
+            )}
+
             <div className="flex gap-2 border border-destructive/30 bg-destructive/5 p-3 text-xs text-muted-foreground">
               <HugeiconsIcon
                 icon={Alert02Icon}

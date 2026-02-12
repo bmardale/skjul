@@ -24,13 +24,13 @@ var (
 	ErrInvalidHash = errors.New("invalid argon2 hash format")
 )
 
-func HashPassword(password string) (string, error) {
+func HashAuthKey(authKey string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("generate salt: %w", err)
 	}
 
-	key := argon2.IDKey([]byte(password), salt, timeParam, memoryParam, parallelism, keyLen)
+	key := argon2.IDKey([]byte(authKey), salt, timeParam, memoryParam, parallelism, keyLen)
 
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(key)
@@ -39,7 +39,7 @@ func HashPassword(password string) (string, error) {
 		argon2idVer, memoryParam, timeParam, parallelism, b64Salt, b64Hash), nil
 }
 
-func VerifyPassword(hash, password string) (bool, error) {
+func VerifyAuthKey(hash, authKey string) (bool, error) {
 	parts := strings.Split(hash, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return false, ErrInvalidHash
@@ -68,6 +68,6 @@ func VerifyPassword(hash, password string) (bool, error) {
 		return false, ErrInvalidHash
 	}
 
-	derived := argon2.IDKey([]byte(password), salt, time, memory, parallelism, uint32(len(storedHash)))
+	derived := argon2.IDKey([]byte(authKey), salt, time, memory, parallelism, uint32(len(storedHash)))
 	return subtle.ConstantTimeCompare(derived, storedHash) == 1, nil
 }

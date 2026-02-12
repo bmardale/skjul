@@ -3,7 +3,12 @@
 CREATE TABLE IF NOT EXISTS users (
 	id UUID PRIMARY KEY DEFAULT uuidv7(),
 	username VARCHAR(128) NOT NULL UNIQUE,
-	password_hash TEXT NOT NULL,
+
+	auth_hash TEXT NOT NULL,
+	salt BYTEA NOT NULL,
+	encrypted_vault_key BYTEA NOT NULL,
+	vault_key_nonce BYTEA NOT NULL,
+	
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -14,6 +14,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) {
 	handler := NewHandler(svc, logger)
 
 	r.POST("/auth/register", handler.Register)
+	r.POST("/auth/login/challenge", handler.LoginChallenge)
 	r.POST("/auth/login", handler.Login)
 	r.POST("/auth/logout", handler.Logout)
 
@@ -22,4 +23,5 @@ func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) {
 	protected.GET("/me", handler.Me)
 	protected.GET("/sessions", handler.ListSessions)
 	protected.DELETE("/sessions/:id", handler.DeleteSession)
+	protected.DELETE("/me", handler.DeleteAccount)
 }

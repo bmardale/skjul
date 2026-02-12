@@ -18,9 +18,12 @@ type Session struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Username     string
-	PasswordHash string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID                uuid.UUID
+	Username          string
+	AuthHash          string
+	Salt              []byte
+	EncryptedVaultKey []byte
+	VaultKeyNonce     []byte
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
 }

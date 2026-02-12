@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -22,13 +23,24 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 }
 
 type registerRequest struct {
+	Username          string `json:"username" binding:"required,min=3,max=128"`
+	AuthKey           string `json:"authKey" binding:"required"`
+	Salt              string `json:"salt" binding:"required"`
+	EncryptedVaultKey string `json:"encryptedVaultKey" binding:"required"`
+	VaultKeyNonce     string `json:"vaultKeyNonce" binding:"required"`
+}
+
+type loginChallengeRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=128"`
-	Password string `json:"password" binding:"required,min=8,max=250"`
+}
+
+type loginChallengeResponse struct {
+	Salt string `json:"salt"`
 }
 
 type loginRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=128"`
-	Password string `json:"password" binding:"required,min=8,max=250"`
+	AuthKey  string `json:"authKey" binding:"required"`
 }
 
 type registerResponse struct {
@@ -41,8 +53,12 @@ type loginResponse struct {
 }
 
 type meResponse struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
+	UserID            string `json:"user_id"`
+	Username          string `json:"username"`
+	Salt              string `json:"salt"`
+	EncryptedVaultKey string `json:"encryptedVaultKey"`
+	VaultKeyNonce     string `json:"vaultKeyNonce"`
+	CreatedAt         string `json:"created_at"`
 }
 
 type sessionResponse struct {
@@ -75,7 +91,23 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	id, err := h.service.Register(c.Request.Context(), req.Username, req.Password)
+	salt, err := hex.DecodeString(req.Salt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: salt"})
+		return
+	}
+	encryptedVaultKey, err := hex.DecodeString(req.EncryptedVaultKey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: encryptedVaultKey"})
+		return
+	}
+	vaultKeyNonce, err := hex.DecodeString(req.VaultKeyNonce)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: vaultKeyNonce"})
+		return
+	}
+
+	id, err := h.service.Register(c.Request.Context(), req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
 	if err != nil {
 		if errors.Is(err, ErrUsernameTaken) {
 			c.JSON(http.StatusConflict, errorResponse{
@@ -92,7 +124,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Login(c.Request.Context(), req.Username, req.Password)
+	result, err := h.service.Login(c.Request.Context(), req.Username, req.AuthKey)
 	if err != nil {
 		h.logger.Error("register: auto-login failed", "error", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{
@@ -108,6 +140,38 @@ func (h *Handler) Register(c *gin.Context) {
 	})
 }
 
+func (h *Handler) LoginChallenge(c *gin.Context) {
+	var req loginChallengeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{
+			Code:    "INVALID_REQUEST",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	challenge, err := h.service.GetLoginChallenge(c.Request.Context(), req.Username)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			c.JSON(http.StatusUnauthorized, errorResponse{
+				Code:    "INVALID_CREDENTIALS",
+				Message: "invalid username or password",
+			})
+			return
+		}
+		h.logger.Error("login challenge failed", "error", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: "failed to fetch login parameters",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, loginChallengeResponse{
+		Salt: hex.EncodeToString(challenge.Salt),
+	})
+}
+
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -118,7 +182,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Login(c.Request.Context(), req.Username, req.Password)
+	result, err := h.service.Login(c.Request.Context(), req.Username, req.AuthKey)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
 			c.JSON(http.StatusUnauthorized, errorResponse{
@@ -163,8 +227,12 @@ func (h *Handler) Me(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, meResponse{
-		UserID:   user.ID.String(),
-		Username: user.Username,
+		UserID:            user.ID.String(),
+		Username:          user.Username,
+		Salt:              hex.EncodeToString(user.Salt),
+		EncryptedVaultKey: hex.EncodeToString(user.EncryptedVaultKey),
+		VaultKeyNonce:     hex.EncodeToString(user.VaultKeyNonce),
+		CreatedAt:         user.CreatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -241,5 +309,28 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	if sessionID == targetID {
 		h.clearSessionCookie(c)
 	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	userID, ok := GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, errorResponse{
+			Code:    "UNAUTHORIZED",
+			Message: "missing or invalid session",
+		})
+		return
+	}
+
+	if err := h.service.DeleteAccount(c.Request.Context(), userID); err != nil {
+		h.logger.Error("delete account failed", "error", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{
+			Code:    "INTERNAL_ERROR",
+			Message: "failed to delete account",
+		})
+		return
+	}
+
+	h.clearSessionCookie(c)
 	c.Status(http.StatusNoContent)
 }
