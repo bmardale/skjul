@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -17,7 +16,6 @@ import {
   UserCircleIcon,
   Share01Icon,
   OpenSourceIcon,
-  Github01Icon,
   ArrowRight01Icon,
   CommandLineIcon,
 } from "@hugeicons/core-free-icons";
@@ -63,37 +61,7 @@ const steps = [
 
 function Index() {
   return (
-    <div className="min-h-svh bg-background text-foreground">
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* ── Header ── */}
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">$</span>
-            <span className="text-sm font-medium tracking-tight">skjul</span>
-            <Badge variant="outline">E2E</Badge>
-            <Badge variant="outline">self-host</Badge>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              render={
-                <a
-                  href="https://github.com/skjul/skjul"
-                  target="_blank"
-                  rel="noreferrer"
-                />
-              }
-            >
-              <HugeiconsIcon icon={Github01Icon} size={14} />
-              GitHub
-            </Button>
-            <ModeToggle />
-          </div>
-        </header>
-
-        <Separator className="my-6" />
-
+    <div className="mx-auto max-w-2xl px-4 py-8">
         {/* ── Hero ── */}
         <section className="space-y-4">
           <div className="flex flex-wrap gap-1.5">
@@ -256,7 +224,6 @@ http://localhost:8080`}
             </a>
           </div>
         </footer>
-      </div>
     </div>
   );
 }
