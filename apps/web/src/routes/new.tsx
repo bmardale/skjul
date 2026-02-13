@@ -40,6 +40,7 @@ import { PasteBody } from "@/components/paste-body";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_ATTACHMENTS = 5;
 import { PageSkeleton } from "../components/ui/page-skeleton";
+import { VaultUnlockDialog } from "@/components/vault-unlock-dialog";
 
 export const Route = createFileRoute("/new")({
   component: NewPaste,
@@ -119,13 +120,80 @@ interface SelectedFile {
   error?: string;
 }
 
+type FormValue = {
+  title: string;
+  expiration: ExpirationValue;
+  burn_after_reading: boolean;
+  language_id: LanguageValue;
+  body: string;
+};
+
 function NewPasteForm() {
-  const { vaultKey } = useAuth();
+  const { user, vaultKey, setVaultKey, logout } = useAuth();
   const [created, setCreated] = useState<CreatedPaste | null>(null);
   const [copied, setCopied] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [pendingSubmitValue, setPendingSubmitValue] = useState<FormValue | null>(null);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  const [isRetryingCreate, setIsRetryingCreate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function executeCreatePaste(value: FormValue, key: Uint8Array) {
+    const paste = await createPaste(value.title, value.body, key);
+    const res = await api.createPaste({
+      encrypted_title_ciphertext: bytesToHex(paste.encryptedTitleCiphertext),
+      encrypted_title_nonce: bytesToHex(paste.encryptedTitleNonce),
+      encrypted_body_ciphertext: bytesToHex(paste.encryptedBodyCiphertext),
+      encrypted_body_nonce: bytesToHex(paste.encryptedBodyNonce),
+      encrypted_paste_key_ciphertext: bytesToHex(paste.encryptedPasteKeyCiphertext),
+      encrypted_paste_key_nonce: bytesToHex(paste.encryptedPasteKeyNonce),
+      expiration: value.expiration,
+      burn_after_reading: value.burn_after_reading,
+      language_id: value.language_id,
+    });
+
+    const validFiles = selectedFiles.filter((f) => !f.error);
+    const { fileKey, metaKey } = derivePasteSubkeys(paste.pasteKey);
+    for (let i = 0; i < validFiles.length; i++) {
+      setUploadProgress(`Uploading attachment ${i + 1} of ${validFiles.length}...`);
+      const { file } = validFiles[i];
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const { ciphertext, nonce } = encryptFile(bytes, fileKey, AAD.FILE);
+      const { ciphertext: filenameCiphertext, nonce: filenameNonce } = encryptFilename(
+        file.name,
+        metaKey,
+        AAD.FILENAME
+      );
+      const mimeType = file.type || "application/octet-stream";
+      const { ciphertext: mimeCiphertext, nonce: mimeNonce } = encryptFilename(
+        mimeType,
+        metaKey,
+        AAD.MIME
+      );
+
+      const attachmentRes = await api.createAttachment(res.id, {
+        encrypted_size: ciphertext.length,
+        filename_ciphertext: bytesToHex(filenameCiphertext),
+        filename_nonce: bytesToHex(filenameNonce),
+        content_nonce: bytesToHex(nonce),
+        mime_ciphertext: bytesToHex(mimeCiphertext),
+        mime_nonce: bytesToHex(mimeNonce),
+      });
+
+      await api.uploadToPresignedUrl(attachmentRes.upload_url, ciphertext);
+    }
+    setUploadProgress(null);
+
+    const shareUrl = `${window.location.origin}/pastes/${res.id}#key=${paste.pasteKeyBase64Url}`;
+    setCreated({
+      id: res.id,
+      shareUrl,
+      title: value.title,
+      body: value.body,
+      language_id: value.language_id,
+    });
+  }
 
   const form = useForm({
     defaultValues: {
@@ -140,62 +208,12 @@ function NewPasteForm() {
     },
     onSubmit: async ({ value }) => {
       if (!vaultKey) {
-        throw new Error("Vault key not found");
+        setPendingSubmitValue(value);
+        setShowUnlockPrompt(true);
+        return;
       }
 
-      const paste = await createPaste(value.title, value.body, vaultKey);
-      const res = await api.createPaste({
-        encrypted_title_ciphertext: bytesToHex(paste.encryptedTitleCiphertext),
-        encrypted_title_nonce: bytesToHex(paste.encryptedTitleNonce),
-        encrypted_body_ciphertext: bytesToHex(paste.encryptedBodyCiphertext),
-        encrypted_body_nonce: bytesToHex(paste.encryptedBodyNonce),
-        encrypted_paste_key_ciphertext: bytesToHex(paste.encryptedPasteKeyCiphertext),
-        encrypted_paste_key_nonce: bytesToHex(paste.encryptedPasteKeyNonce),
-        expiration: value.expiration,
-        burn_after_reading: value.burn_after_reading,
-        language_id: value.language_id,
-      });
-
-      const validFiles = selectedFiles.filter((f) => !f.error);
-      const { fileKey, metaKey } = derivePasteSubkeys(paste.pasteKey);
-      for (let i = 0; i < validFiles.length; i++) {
-        setUploadProgress(`Uploading attachment ${i + 1} of ${validFiles.length}...`);
-        const { file } = validFiles[i];
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const { ciphertext, nonce } = encryptFile(bytes, fileKey, AAD.FILE);
-        const { ciphertext: filenameCiphertext, nonce: filenameNonce } = encryptFilename(
-          file.name,
-          metaKey,
-          AAD.FILENAME
-        );
-        const mimeType = file.type || "application/octet-stream";
-        const { ciphertext: mimeCiphertext, nonce: mimeNonce } = encryptFilename(
-          mimeType,
-          metaKey,
-          AAD.MIME
-        );
-
-        const attachmentRes = await api.createAttachment(res.id, {
-          encrypted_size: ciphertext.length,
-          filename_ciphertext: bytesToHex(filenameCiphertext),
-          filename_nonce: bytesToHex(filenameNonce),
-          content_nonce: bytesToHex(nonce),
-          mime_ciphertext: bytesToHex(mimeCiphertext),
-          mime_nonce: bytesToHex(mimeNonce),
-        });
-
-        await api.uploadToPresignedUrl(attachmentRes.upload_url, ciphertext);
-      }
-      setUploadProgress(null);
-
-      const shareUrl = `${window.location.origin}/pastes/${res.id}#key=${paste.pasteKeyBase64Url}`;
-      setCreated({
-        id: res.id,
-        shareUrl,
-        title: value.title,
-        body: value.body,
-        language_id: value.language_id,
-      });
+      await executeCreatePaste(value, vaultKey);
     },
   });
 
@@ -287,8 +305,40 @@ function NewPasteForm() {
     );
   }
 
+  const handleUnlockForCreate = async (decryptedKey: Uint8Array) => {
+    setVaultKey(decryptedKey);
+    setShowUnlockPrompt(false);
+    const value = pendingSubmitValue;
+    setPendingSubmitValue(null);
+    if (value) {
+      setIsRetryingCreate(true);
+      try {
+        await executeCreatePaste(value, decryptedKey);
+      } finally {
+        setIsRetryingCreate(false);
+      }
+    }
+  };
+
+  const handleUnlockLogout = async () => {
+    setShowUnlockPrompt(false);
+    setPendingSubmitValue(null);
+    await logout();
+  };
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
+      {showUnlockPrompt && (
+        <div className="flex gap-2 border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <HugeiconsIcon
+            icon={Alert02Icon}
+            size={16}
+            className="shrink-0 text-primary mt-0.5"
+          />
+          <p>Unlock your vault to create this paste.</p>
+        </div>
+      )}
+
       <div className="space-y-1">
         <p className="text-sm font-medium">
           <span className="text-muted-foreground">$ </span>
@@ -298,6 +348,15 @@ function NewPasteForm() {
           Write, encrypt, and share.
         </p>
       </div>
+
+      {user && showUnlockPrompt && (
+        <VaultUnlockDialog
+          user={user}
+          open={showUnlockPrompt}
+          onUnlock={handleUnlockForCreate}
+          onLogout={handleUnlockLogout}
+        />
+      )}
 
       <Card>
         <CardHeader>
@@ -508,15 +567,16 @@ function NewPasteForm() {
               selector={(state) => [state.canSubmit, state.isSubmitting]}
               children={([canSubmit, isSubmitting]) => {
                 const hasFileErrors = selectedFiles.some((f) => f.error);
+                const isBusy = isSubmitting || isRetryingCreate;
                 return (
                   <Button
                     type="submit"
-                    disabled={!canSubmit || hasFileErrors || uploadProgress !== null}
+                    disabled={!canSubmit || hasFileErrors || uploadProgress !== null || isBusy}
                     className="w-full"
                     size="lg"
                   >
                     {uploadProgress ??
-                      (isSubmitting ? "Encrypting & uploading..." : "Create paste")}
+                      (isBusy ? "Encrypting & uploading..." : "Create paste")}
                   </Button>
                 );
               }}
