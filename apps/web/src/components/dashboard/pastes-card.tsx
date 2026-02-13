@@ -1,11 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, Attachment01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, Attachment01Icon, ArrowDown01Icon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { api, type PasteListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { decryptPasteTitle } from "@/lib/crypto";
-import { useAsyncData } from "@/lib/hooks/use-async-data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -71,18 +70,60 @@ export function PastesCard({ isActive }: { isActive: boolean }) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const fetchPastes = useCallback(async () => {
-    if (!vaultKey) return [];
-    const data = await api.listPastes();
-    return data.map((paste) => decryptPasteListItem(vaultKey, paste));
-  }, [vaultKey]);
+  const [pastes, setPastes] = useState<DecryptedPaste[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const { data: pastes, setData: setPastes, loading, error, clearError, refresh } =
-    useAsyncData<DecryptedPaste[]>(fetchPastes, {
-      enabled: isActive && !!vaultKey,
-      initialData: [],
-      errorMessage: "Failed to load pastes.",
-    });
+  const loadPastes = useCallback(
+    async (cursor?: string, append = false) => {
+      if (!vaultKey) return;
+      
+      if (cursor) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+      setLocalError(null);
+
+      try {
+        const data = await api.listPastes(cursor);
+        const decrypted = data.items.map((paste: PasteListItem) =>
+          decryptPasteListItem(vaultKey, paste),
+        );
+
+        if (append) {
+          setPastes((prev) => [...prev, ...decrypted]);
+        } else {
+          setPastes(decrypted);
+        }
+        setNextCursor(data.next_cursor ?? null);
+      } catch {
+        setLocalError(cursor ? "Failed to load more pastes." : "Failed to load pastes.");
+      } finally {
+        setLoading(false);
+        setIsLoadingMore(false);
+      }
+    },
+    [vaultKey],
+  );
+
+  // Initial load
+  useEffect(() => {
+    if (isActive && vaultKey) {
+      loadPastes();
+    }
+  }, [isActive, vaultKey, loadPastes]);
+
+  const handleRefresh = () => {
+    loadPastes();
+  };
+
+  const handleLoadMore = () => {
+    if (nextCursor) {
+      loadPastes(nextCursor, true);
+    }
+  };
 
   const handleDelete = async () => {
     const id = deleteTarget;
@@ -100,13 +141,7 @@ export function PastesCard({ isActive }: { isActive: boolean }) {
     }
   };
 
-  const handleRefresh = async () => {
-    setLocalError(null);
-    clearError();
-    await refresh();
-  };
-
-  const displayError = localError || error;
+  const displayError = localError;
 
   return (
     <>
@@ -174,6 +209,20 @@ export function PastesCard({ isActive }: { isActive: boolean }) {
               </Link>
             </div>
           ))}
+          {nextCursor && (
+            <div className="pt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={isLoadingMore}
+                onClick={() => void handleLoadMore()}
+              >
+                <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="mr-2" />
+                {isLoadingMore ? "Loading..." : "Load more"}
+              </Button>
+            </div>
+          )}
         </div>
       </DataCard>
 

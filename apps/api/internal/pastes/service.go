@@ -212,6 +212,71 @@ func (s *Service) ListByUser(ctx context.Context, userID uuid.UUID) ([]NoteMeta,
 	return out, nil
 }
 
+type ListByUserPage struct {
+	Items      []NoteMeta
+	NextCursor *uuid.UUID
+}
+
+const defaultPageLimit = 10
+
+func (s *Service) ListByUserPaginated(
+	ctx context.Context,
+	userID uuid.UUID,
+	cursor *uuid.UUID,
+	limit int32,
+) (*ListByUserPage, error) {
+	if limit <= 0 {
+		limit = defaultPageLimit
+	}
+
+	fetchLimit := limit + 1
+
+	var cursorUUID uuid.UUID
+	if cursor != nil {
+		cursorUUID = *cursor
+	}
+
+	rows, err := s.queries.ListNotesByUserIDPaginated(ctx, sqlc.ListNotesByUserIDPaginatedParams{
+		UserID:  userID,
+		Column2: cursorUUID,
+		Limit:   fetchLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list notes paginated: %w", err)
+	}
+
+	hasMore := len(rows) > int(limit)
+	if hasMore {
+		rows = rows[:limit]
+	}
+
+	out := make([]NoteMeta, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, NoteMeta{
+			ID:                r.ID,
+			BurnAfterRead:     r.BurnAfterRead,
+			TitleCiphertext:   r.TitleCiphertext,
+			TitleNonce:        r.TitleNonce,
+			EncryptedKey:      r.EncryptedKey,
+			EncryptedKeyNonce: r.EncryptedKeyNonce,
+			CreatedAt:         r.CreatedAt.Time,
+			ExpiresAt:         r.ExpiresAt.Time,
+			AttachmentCount:   r.AttachmentCount,
+		})
+	}
+
+	var nextCursor *uuid.UUID
+	if hasMore && len(out) > 0 {
+		lastID := out[len(out)-1].ID
+		nextCursor = &lastID
+	}
+
+	return &ListByUserPage{
+		Items:      out,
+		NextCursor: nextCursor,
+	}, nil
+}
+
 func (s *Service) DeleteByID(ctx context.Context, userID, noteID uuid.UUID) error {
 	return s.queries.DeleteNoteByIDAndUserID(ctx, sqlc.DeleteNoteByIDAndUserIDParams{
 		ID:     noteID,

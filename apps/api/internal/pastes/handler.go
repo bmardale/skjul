@@ -75,6 +75,11 @@ type pasteListItem struct {
 	AttachmentCount             int64  `json:"attachment_count"`
 }
 
+type listPastesResponse struct {
+	Items      []pasteListItem `json:"items"`
+	NextCursor string          `json:"next_cursor,omitempty"`
+}
+
 type createAttachmentRequest struct {
 	EncryptedSize      int64  `json:"encrypted_size" binding:"required"`
 	FilenameCiphertext string `json:"filename_ciphertext" binding:"required"`
@@ -222,7 +227,20 @@ func (h *Handler) GetPaste(c *gin.Context) {
 func (h *Handler) ListPastes(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
-	notes, err := h.service.ListByUser(c.Request.Context(), userID)
+	var cursor *uuid.UUID
+	if cursorStr := c.Query("cursor"); cursorStr != "" {
+		parsed, err := uuid.Parse(cursorStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResponse{
+				Code:    "INVALID_REQUEST",
+				Message: "invalid cursor",
+			})
+			return
+		}
+		cursor = &parsed
+	}
+
+	page, err := h.service.ListByUserPaginated(c.Request.Context(), userID, cursor, 10)
 	if err != nil {
 		h.logger.Error("list pastes failed", "error", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{
@@ -232,8 +250,8 @@ func (h *Handler) ListPastes(c *gin.Context) {
 		return
 	}
 
-	resp := make([]pasteListItem, 0, len(notes))
-	for _, n := range notes {
+	resp := make([]pasteListItem, 0, len(page.Items))
+	for _, n := range page.Items {
 		resp = append(resp, pasteListItem{
 			ID:                          n.ID.String(),
 			BurnAfterRead:               n.BurnAfterRead,
@@ -246,7 +264,16 @@ func (h *Handler) ListPastes(c *gin.Context) {
 			AttachmentCount:             n.AttachmentCount,
 		})
 	}
-	c.JSON(http.StatusOK, resp)
+
+	var nextCursor string
+	if page.NextCursor != nil {
+		nextCursor = page.NextCursor.String()
+	}
+
+	c.JSON(http.StatusOK, listPastesResponse{
+		Items:      resp,
+		NextCursor: nextCursor,
+	})
 }
 
 func (h *Handler) DeletePaste(c *gin.Context) {

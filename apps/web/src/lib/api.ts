@@ -132,6 +132,11 @@ export interface PasteListItem {
   attachment_count: number;
 }
 
+export interface ListPastesResponse {
+  items: PasteListItem[];
+  next_cursor?: string;
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -238,8 +243,9 @@ export const api = {
     }
   },
 
-  listPastes() {
-    return client.get("api/v1/pastes").json<PasteListItem[]>();
+  listPastes(cursor?: string) {
+    const searchParams = cursor ? { cursor } : undefined;
+    return client.get("api/v1/pastes", { searchParams }).json<ListPastesResponse>();
   },
 
   deletePaste(id: string) {
