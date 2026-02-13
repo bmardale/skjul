@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/bmardale/skjul/internal/admin"
+	"github.com/bmardale/skjul/internal/apierr"
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/bmardale/skjul/internal/invitations"
@@ -43,5 +44,5 @@ func (a *App) publicConfig(c *gin.Context) {
 }
 
 func (a *App) noRoute(c *gin.Context) {
-	c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	apierr.ErrNotFound.Respond(c)
 }

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/bmardale/skjul/internal/apierr"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -91,11 +92,6 @@ type sessionResponse struct {
 	Current   bool   `json:"current"`
 }
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
 func (h *Handler) setSessionCookie(c *gin.Context, token string) {
 	c.SetCookie(SessionCookieName, token, sessionCookieMaxAge, "/", "", false, true)
 }
@@ -107,36 +103,30 @@ func (h *Handler) clearSessionCookie(c *gin.Context) {
 func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
 	if h.invSvc != nil && h.invSvc.RequireInviteCode() {
 		if req.InviteCode == "" {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Code:    "INVITE_CODE_REQUIRED",
-				Message: "invite code is required to register",
-			})
+			apierr.New(http.StatusBadRequest, apierr.CodeInviteCodeRequired, "invite code is required to register").Respond(c)
 			return
 		}
 	}
 
 	salt, err := hex.DecodeString(req.Salt)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: salt"})
+		apierr.BadRequest("invalid hex: salt").Respond(c)
 		return
 	}
 	encryptedVaultKey, err := hex.DecodeString(req.EncryptedVaultKey)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: encryptedVaultKey"})
+		apierr.BadRequest("invalid hex: encryptedVaultKey").Respond(c)
 		return
 	}
 	vaultKeyNonce, err := hex.DecodeString(req.VaultKeyNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: vaultKeyNonce"})
+		apierr.BadRequest("invalid hex: vaultKeyNonce").Respond(c)
 		return
 	}
 
@@ -147,10 +137,7 @@ func (h *Handler) Register(c *gin.Context) {
 		tx, err := h.db.Begin(ctx)
 		if err != nil {
 			h.logger.Error("register: begin tx failed", "error", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Code:    "INTERNAL_ERROR",
-				Message: "failed to create user",
-			})
+			apierr.InternalError("failed to create user").Respond(c)
 			return
 		}
 		defer tx.Rollback(ctx)
@@ -158,43 +145,28 @@ func (h *Handler) Register(c *gin.Context) {
 		id, err = h.service.RegisterWithTx(ctx, tx, req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
 		if err != nil {
 			if errors.Is(err, ErrUsernameTaken) {
-				c.JSON(http.StatusConflict, errorResponse{
-					Code:    "USERNAME_TAKEN",
-					Message: "username already taken",
-				})
+				apierr.New(http.StatusConflict, apierr.CodeUsernameTaken, "username already taken").Respond(c)
 				return
 			}
 			h.logger.Error("register failed", "error", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Code:    "INTERNAL_ERROR",
-				Message: "failed to create user",
-			})
+			apierr.InternalError("failed to create user").Respond(c)
 			return
 		}
 
 		if err := h.invSvc.RedeemInviteTx(ctx, tx, req.InviteCode, id); err != nil {
 			var invErr InvalidInviteCodeError
 			if errors.As(err, &invErr) {
-				c.JSON(http.StatusBadRequest, errorResponse{
-					Code:    "INVALID_INVITE_CODE",
-					Message: "invalid or already used invite code",
-				})
+				apierr.New(http.StatusBadRequest, apierr.CodeInvalidInviteCode, "invalid or already used invite code").Respond(c)
 				return
 			}
 			h.logger.Error("register: redeem invite failed", "error", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Code:    "INTERNAL_ERROR",
-				Message: "failed to create user",
-			})
+			apierr.InternalError("failed to create user").Respond(c)
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
 			h.logger.Error("register: commit tx failed", "error", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Code:    "INTERNAL_ERROR",
-				Message: "failed to create user",
-			})
+			apierr.InternalError("failed to create user").Respond(c)
 			return
 		}
 	} else {
@@ -202,17 +174,11 @@ func (h *Handler) Register(c *gin.Context) {
 		id, err = h.service.Register(ctx, req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
 		if err != nil {
 			if errors.Is(err, ErrUsernameTaken) {
-				c.JSON(http.StatusConflict, errorResponse{
-					Code:    "USERNAME_TAKEN",
-					Message: "username already taken",
-				})
+				apierr.New(http.StatusConflict, apierr.CodeUsernameTaken, "username already taken").Respond(c)
 				return
 			}
 			h.logger.Error("register failed", "error", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{
-				Code:    "INTERNAL_ERROR",
-				Message: "failed to create user",
-			})
+			apierr.InternalError("failed to create user").Respond(c)
 			return
 		}
 	}
@@ -220,10 +186,7 @@ func (h *Handler) Register(c *gin.Context) {
 	result, err := h.service.Login(ctx, req.Username, req.AuthKey)
 	if err != nil {
 		h.logger.Error("register: auto-login failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to create session",
-		})
+		apierr.InternalError("failed to create session").Respond(c)
 		return
 	}
 
@@ -236,27 +199,18 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) LoginChallenge(c *gin.Context) {
 	var req loginChallengeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
 	challenge, err := h.service.GetLoginChallenge(c.Request.Context(), req.Username)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
-			c.JSON(http.StatusUnauthorized, errorResponse{
-				Code:    "INVALID_CREDENTIALS",
-				Message: "invalid username or password",
-			})
+			apierr.New(http.StatusUnauthorized, apierr.CodeInvalidCredentials, "invalid username or password").Respond(c)
 			return
 		}
 		h.logger.Error("login challenge failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to fetch login parameters",
-		})
+		apierr.InternalError("failed to fetch login parameters").Respond(c)
 		return
 	}
 
@@ -268,27 +222,18 @@ func (h *Handler) LoginChallenge(c *gin.Context) {
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
 	result, err := h.service.Login(c.Request.Context(), req.Username, req.AuthKey)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
-			c.JSON(http.StatusUnauthorized, errorResponse{
-				Code:    "INVALID_CREDENTIALS",
-				Message: "invalid username or password",
-			})
+			apierr.New(http.StatusUnauthorized, apierr.CodeInvalidCredentials, "invalid username or password").Respond(c)
 			return
 		}
 		h.logger.Error("login failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to authenticate",
-		})
+		apierr.InternalError("failed to authenticate").Respond(c)
 		return
 	}
 
@@ -305,10 +250,7 @@ func (h *Handler) Me(c *gin.Context) {
 	user, err := h.service.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error("me: get user failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to fetch user",
-		})
+		apierr.InternalError("failed to fetch user").Respond(c)
 		return
 	}
 
@@ -338,10 +280,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 	sessions, err := h.service.ListSessions(c.Request.Context(), userID, sessionID)
 	if err != nil {
 		h.logger.Error("list sessions failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to list sessions",
-		})
+		apierr.InternalError("failed to list sessions").Respond(c)
 		return
 	}
 
@@ -363,19 +302,13 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 
 	targetID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: "invalid session id",
-		})
+		apierr.BadRequest("invalid session id").Respond(c)
 		return
 	}
 
 	if err := h.service.DeleteSessionByID(c.Request.Context(), userID, targetID); err != nil {
 		h.logger.Error("delete session failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to delete session",
-		})
+		apierr.InternalError("failed to delete session").Respond(c)
 		return
 	}
 
@@ -390,10 +323,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 
 	if err := h.service.DeleteAccount(c.Request.Context(), userID); err != nil {
 		h.logger.Error("delete account failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to delete account",
-		})
+		apierr.InternalError("failed to delete account").Respond(c)
 		return
 	}
 

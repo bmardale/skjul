@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"github.com/bmardale/skjul/internal/apierr"
 )
 
 const (
@@ -17,21 +17,13 @@ func RequireAuth(service *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, err := c.Cookie(SessionCookieName)
 		if err != nil || token == "" {
-			c.JSON(http.StatusUnauthorized, errorResponse{
-				Code:    "UNAUTHORIZED",
-				Message: "missing or invalid session",
-			})
-			c.Abort()
+			apierr.ErrUnauthorized.Abort(c)
 			return
 		}
 
 		userID, sessionID, err := service.GetUserIDFromSession(c.Request.Context(), token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, errorResponse{
-				Code:    "UNAUTHORIZED",
-				Message: "missing or invalid session",
-			})
-			c.Abort()
+			apierr.ErrUnauthorized.Abort(c)
 			return
 		}
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bmardale/skjul/internal/apierr"
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,10 +45,7 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	users, err := h.queries.ListAllUsers(c.Request.Context())
 	if err != nil {
 		h.logger.Error("list users failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to list users",
-		})
+		apierr.InternalError("failed to list users").Respond(c)
 		return
 	}
 
@@ -66,37 +64,25 @@ func (h *Handler) ListUsers(c *gin.Context) {
 func (h *Handler) GetUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "INVALID_REQUEST",
-			"message": "invalid user id",
-		})
+		apierr.BadRequest("invalid user id").Respond(c)
 		return
 	}
 
 	user, err := h.queries.GetUserBasic(c.Request.Context(), id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{
-				"code":    "NOT_FOUND",
-				"message": "user not found",
-			})
+			apierr.NotFound("user not found").Respond(c)
 			return
 		}
 		h.logger.Error("get user failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to fetch user",
-		})
+		apierr.InternalError("failed to fetch user").Respond(c)
 		return
 	}
 
 	stats, err := h.queries.GetUserStats(c.Request.Context(), id)
 	if err != nil {
 		h.logger.Error("get user stats failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to fetch user stats",
-		})
+		apierr.InternalError("failed to fetch user stats").Respond(c)
 		return
 	}
 
@@ -113,19 +99,13 @@ func (h *Handler) GetUser(c *gin.Context) {
 func (h *Handler) DeleteUser(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "INVALID_REQUEST",
-			"message": "invalid user id",
-		})
+		apierr.BadRequest("invalid user id").Respond(c)
 		return
 	}
 
 	if err := h.queries.DeleteUser(c.Request.Context(), id); err != nil {
 		h.logger.Error("delete user failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to delete user",
-		})
+		apierr.InternalError("failed to delete user").Respond(c)
 		return
 	}
 
@@ -135,19 +115,13 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 func (h *Handler) UpdateInviteQuota(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "INVALID_REQUEST",
-			"message": "invalid user id",
-		})
+		apierr.BadRequest("invalid user id").Respond(c)
 		return
 	}
 
 	var req updateInviteQuotaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    "INVALID_REQUEST",
-			"message": err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
@@ -156,10 +130,7 @@ func (h *Handler) UpdateInviteQuota(c *gin.Context) {
 		InviteQuota: req.Quota,
 	}); err != nil {
 		h.logger.Error("update invite quota failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to update invite quota",
-		})
+		apierr.InternalError("failed to update invite quota").Respond(c)
 		return
 	}
 

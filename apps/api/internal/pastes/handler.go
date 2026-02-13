@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bmardale/skjul/internal/apierr"
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -97,51 +98,43 @@ type createAttachmentResponse struct {
 	UploadURL string `json:"upload_url"`
 }
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
 func (h *Handler) CreatePaste(c *gin.Context) {
 	userID, _ := auth.GetUserID(c)
 
 	var req createPasteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
 	titleCiphertext, err := hex.DecodeString(req.EncryptedTitleCiphertext)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: titleCiphertext"})
+		apierr.BadRequest("invalid hex: titleCiphertext").Respond(c)
 		return
 	}
 	titleNonce, err := hex.DecodeString(req.EncryptedTitleNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: titleNonce"})
+		apierr.BadRequest("invalid hex: titleNonce").Respond(c)
 		return
 	}
 	bodyCiphertext, err := hex.DecodeString(req.EncryptedBodyCiphertext)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: bodyCiphertext"})
+		apierr.BadRequest("invalid hex: bodyCiphertext").Respond(c)
 		return
 	}
 	bodyNonce, err := hex.DecodeString(req.EncryptedBodyNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: bodyNonce"})
+		apierr.BadRequest("invalid hex: bodyNonce").Respond(c)
 		return
 	}
 	encryptedKey, err := hex.DecodeString(req.EncryptedPasteKeyCiphertext)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: encryptedPasteKeyCiphertext"})
+		apierr.BadRequest("invalid hex: encryptedPasteKeyCiphertext").Respond(c)
 		return
 	}
 	encryptedKeyNonce, err := hex.DecodeString(req.EncryptedPasteKeyNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: encryptedPasteKeyNonce"})
+		apierr.BadRequest("invalid hex: encryptedPasteKeyNonce").Respond(c)
 		return
 	}
 
@@ -162,10 +155,7 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 	)
 	if err != nil {
 		h.logger.Error("create paste failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to create paste",
-		})
+		apierr.InternalError("failed to create paste").Respond(c)
 		return
 	}
 
@@ -179,27 +169,18 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 func (h *Handler) GetPaste(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: "invalid paste id",
-		})
+		apierr.BadRequest("invalid paste id").Respond(c)
 		return
 	}
 
 	result, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			c.JSON(http.StatusNotFound, errorResponse{
-				Code:    "NOT_FOUND",
-				Message: "paste not found or expired",
-			})
+			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
 		h.logger.Error("get paste failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to fetch paste",
-		})
+		apierr.InternalError("failed to fetch paste").Respond(c)
 		return
 	}
 
@@ -241,10 +222,7 @@ func (h *Handler) ListPastes(c *gin.Context) {
 	if cursorStr := c.Query("cursor"); cursorStr != "" {
 		parsed, err := uuid.Parse(cursorStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Code:    "INVALID_REQUEST",
-				Message: "invalid cursor",
-			})
+			apierr.BadRequest("invalid cursor").Respond(c)
 			return
 		}
 		cursor = &parsed
@@ -253,10 +231,7 @@ func (h *Handler) ListPastes(c *gin.Context) {
 	page, err := h.service.ListByUserPaginated(c.Request.Context(), userID, cursor, 10)
 	if err != nil {
 		h.logger.Error("list pastes failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to list pastes",
-		})
+		apierr.InternalError("failed to list pastes").Respond(c)
 		return
 	}
 
@@ -292,19 +267,13 @@ func (h *Handler) DeletePaste(c *gin.Context) {
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: "invalid paste id",
-		})
+		apierr.BadRequest("invalid paste id").Respond(c)
 		return
 	}
 
 	if err := h.service.DeleteByID(c.Request.Context(), userID, id); err != nil {
 		h.logger.Error("delete paste failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to delete paste",
-		})
+		apierr.InternalError("failed to delete paste").Respond(c)
 		return
 	}
 
@@ -316,45 +285,39 @@ func (h *Handler) CreateAttachment(c *gin.Context) {
 
 	noteID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: "invalid paste id",
-		})
+		apierr.BadRequest("invalid paste id").Respond(c)
 		return
 	}
 
 	var req createAttachmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{
-			Code:    "INVALID_REQUEST",
-			Message: err.Error(),
-		})
+		apierr.BadRequest(err.Error()).Respond(c)
 		return
 	}
 
 	filenameCiphertext, err := hex.DecodeString(req.FilenameCiphertext)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: filename_ciphertext"})
+		apierr.BadRequest("invalid hex: filename_ciphertext").Respond(c)
 		return
 	}
 	filenameNonce, err := hex.DecodeString(req.FilenameNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: filename_nonce"})
+		apierr.BadRequest("invalid hex: filename_nonce").Respond(c)
 		return
 	}
 	contentNonce, err := hex.DecodeString(req.ContentNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: content_nonce"})
+		apierr.BadRequest("invalid hex: content_nonce").Respond(c)
 		return
 	}
 	mimeCiphertext, err := hex.DecodeString(req.MimeCiphertext)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: mime_ciphertext"})
+		apierr.BadRequest("invalid hex: mime_ciphertext").Respond(c)
 		return
 	}
 	mimeNonce, err := hex.DecodeString(req.MimeNonce)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: mime_nonce"})
+		apierr.BadRequest("invalid hex: mime_nonce").Respond(c)
 		return
 	}
 
@@ -371,38 +334,23 @@ func (h *Handler) CreateAttachment(c *gin.Context) {
 	)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			c.JSON(http.StatusNotFound, errorResponse{
-				Code:    "NOT_FOUND",
-				Message: "paste not found or expired",
-			})
+			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
 		if errors.Is(err, ErrForbidden) {
-			c.JSON(http.StatusForbidden, errorResponse{
-				Code:    "FORBIDDEN",
-				Message: "you do not have access to this paste",
-			})
+			apierr.Forbidden("you do not have access to this paste").Respond(c)
 			return
 		}
 		if errors.Is(err, ErrAttachmentLimit) {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Code:    "ATTACHMENT_LIMIT",
-				Message: "maximum 5 attachments per paste",
-			})
+			apierr.New(http.StatusBadRequest, apierr.CodeAttachmentLimit, "maximum 5 attachments per paste").Respond(c)
 			return
 		}
 		if errors.Is(err, ErrAttachmentSizeLimit) {
-			c.JSON(http.StatusBadRequest, errorResponse{
-				Code:    "ATTACHMENT_SIZE_LIMIT",
-				Message: "attachment size must not exceed 10MB",
-			})
+			apierr.New(http.StatusBadRequest, apierr.CodeAttachmentSizeLimit, "attachment size must not exceed 10MB").Respond(c)
 			return
 		}
 		h.logger.Error("create attachment failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to create attachment",
-		})
+		apierr.InternalError("failed to create attachment").Respond(c)
 		return
 	}
 
