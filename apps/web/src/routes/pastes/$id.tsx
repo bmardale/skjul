@@ -11,7 +11,7 @@ import {
 import {
   decryptPaste,
   decryptPasteWithKey,
-  decryptFile,
+  decryptFileInWorker,
   decryptFilename,
   getPasteKeyFromHash,
   getPasteKeyFromVault,
@@ -160,9 +160,9 @@ function AttachmentItem({
         if (!res.ok) throw new Error("Fetch failed");
         return res.arrayBuffer();
       })
-      .then((buf) => {
+      .then(async (buf) => {
         const ciphertext = new Uint8Array(buf);
-        const plaintext = decryptFile(
+        const plaintext = await decryptFileInWorker(
           ciphertext,
           hexToBytes(att.content_nonce),
           fileKey,
@@ -283,7 +283,7 @@ function AttachmentList({
       const res = await fetch(att.download_url);
       if (!res.ok) throw new Error("Download failed");
       const ciphertext = new Uint8Array(await res.arrayBuffer());
-      const plaintext = decryptFile(
+      const plaintext = await decryptFileInWorker(
         ciphertext,
         hexToBytes(att.content_nonce),
         fileKey,

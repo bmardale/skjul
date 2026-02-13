@@ -1,8 +1,19 @@
-import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils.js";
-import { hmac } from "@noble/hashes/hmac.js"
-import { sha256 } from "@noble/hashes/sha2.js"
-import { argon2id } from "@noble/hashes/argon2.js";
-import { xchacha20poly1305} from "@noble/ciphers/chacha.js"
+import { hexToBytes, randomBytes } from "@noble/hashes/utils.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import type {
+  CryptoRequest,
+  CryptoResponse,
+  WorkerRequest,
+  WorkerResponse,
+  GenerateRegistrationDataResponse,
+  DeriveLoginKeysResponse,
+  DecryptVaultKeyResponse,
+  CreatePasteResponse,
+  EncryptFileResponse,
+  DecryptFileResponse,
+} from "./crypto-worker-protocol";
 
 const encoder = new TextEncoder();
 
@@ -28,18 +39,61 @@ export function derivePasteSubkeys(pasteKey: Uint8Array) {
   };
 }
 
-function bytesToBase64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 export function base64UrlToBytes(str: string): Uint8Array {
   let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
   while (base64.length % 4) base64 += "=";
   const binary = atob(base64);
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+let worker: Worker | null = null;
+let nextId = 0;
+const pending = new Map<
+  number,
+  { resolve: (value: CryptoResponse) => void; reject: (error: Error) => void }
+>();
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(
+      new URL("./crypto-worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      const { id, ...rest } = event.data;
+      const entry = pending.get(id);
+      if (!entry) return;
+      pending.delete(id);
+      if (rest.ok) {
+        entry.resolve(rest.response);
+      } else {
+        entry.reject(new Error(rest.error));
+      }
+    };
+    worker.onerror = (event) => {
+      const err = new Error(`Worker error: ${event.message}`);
+      for (const [id, entry] of pending) {
+        entry.reject(err);
+        pending.delete(id);
+      }
+    };
+  }
+  return worker;
+}
+
+function postToWorker<T extends CryptoResponse>(
+  request: CryptoRequest,
+  transfer: Transferable[] = [],
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, {
+      resolve: resolve as (value: CryptoResponse) => void,
+      reject,
+    });
+    const msg: WorkerRequest = { id, request };
+    getWorker().postMessage(msg, transfer);
+  });
 }
 
 interface RegistrationResult {
@@ -49,49 +103,29 @@ interface RegistrationResult {
     vaultKeyNonce: string;
 }
 
-function encryptString(text: string, key: Uint8Array, aad: Uint8Array) {
-  const nonce = randomBytes(24);
-  const content = encoder.encode(text);
-  const ciphertext = xchacha20poly1305(key, nonce, aad).encrypt(content);
-  return { ciphertext, nonce };
-}
-
 export async function generateRegistrationData(password: string): Promise<RegistrationResult> {
-    const salt = randomBytes(16);
-    const masterKey = argon2id(password, salt, {
-        t: 2,
-        m:  64 * 1024,
-        p: 1,
-        dkLen: 32,
-    });
-
-    const authKey = deriveSubkey(masterKey, "auth_v1");
-    const encKey = deriveSubkey(masterKey, "master_enc_v1");
-    const vaultKey = randomBytes(32);
-    const vaultKeyNonce = randomBytes(24);
-    const encryptedVaultKey = xchacha20poly1305(encKey, vaultKeyNonce, AAD.VAULT_KEY).encrypt(vaultKey);
-
-    return {
-        salt: bytesToHex(salt),
-        authKey: bytesToHex(authKey),
-        encryptedVaultKey: bytesToHex(encryptedVaultKey),
-        vaultKeyNonce: bytesToHex(vaultKeyNonce),
-    }
+  const response = await postToWorker<GenerateRegistrationDataResponse>({
+    type: "generateRegistrationData",
+    password,
+  });
+  return {
+    salt: response.salt,
+    authKey: response.authKey,
+    encryptedVaultKey: response.encryptedVaultKey,
+    vaultKeyNonce: response.vaultKeyNonce,
+  };
 }
 
 export async function deriveLoginKeys(
   password: string,
   saltHex: string,
 ): Promise<{ masterKey: Uint8Array; authKey: string }> {
-  const salt = hexToBytes(saltHex);
-  const masterKey = argon2id(password, salt, {
-    t: 2,
-    m: 64 * 1024,
-    p: 1,
-    dkLen: 32,
+  const response = await postToWorker<DeriveLoginKeysResponse>({
+    type: "deriveLoginKeys",
+    password,
+    saltHex,
   });
-  const authKey = deriveSubkey(masterKey, "auth_v1");
-  return { masterKey, authKey: bytesToHex(authKey) };
+  return { masterKey: response.masterKey, authKey: response.authKey };
 }
 
 export async function decryptVaultKey(
@@ -99,10 +133,13 @@ export async function decryptVaultKey(
   encryptedVaultKeyHex: string,
   nonceHex: string,
 ): Promise<Uint8Array> {
-  const encKey = deriveSubkey(masterKey, "master_enc_v1");
-  const encryptedVaultKey = hexToBytes(encryptedVaultKeyHex);
-  const nonce = hexToBytes(nonceHex);
-  return xchacha20poly1305(encKey, nonce, AAD.VAULT_KEY).decrypt(encryptedVaultKey);
+  const response = await postToWorker<DecryptVaultKeyResponse>({
+    type: "decryptVaultKey",
+    masterKey,
+    encryptedVaultKeyHex,
+    nonceHex,
+  });
+  return response.vaultKey;
 }
 
 export interface PasteResult {
@@ -114,6 +151,55 @@ export interface PasteResult {
   encryptedPasteKeyNonce: Uint8Array;
   pasteKeyBase64Url: string;
   pasteKey: Uint8Array;
+}
+
+export async function createPaste(title: string, body: string, vaultKey: Uint8Array): Promise<PasteResult> {
+  const response = await postToWorker<CreatePasteResponse>({
+    type: "createPaste",
+    title,
+    body,
+    vaultKey,
+  });
+  return {
+    encryptedTitleCiphertext: response.encryptedTitleCiphertext,
+    encryptedTitleNonce: response.encryptedTitleNonce,
+    encryptedBodyCiphertext: response.encryptedBodyCiphertext,
+    encryptedBodyNonce: response.encryptedBodyNonce,
+    encryptedPasteKeyCiphertext: response.encryptedPasteKeyCiphertext,
+    encryptedPasteKeyNonce: response.encryptedPasteKeyNonce,
+    pasteKeyBase64Url: response.pasteKeyBase64Url,
+    pasteKey: response.pasteKey,
+  };
+}
+
+export interface EncryptedFile {
+  ciphertext: Uint8Array;
+  nonce: Uint8Array;
+}
+
+export async function encryptFileInWorker(
+  file: Uint8Array,
+  key: Uint8Array,
+  aad: Uint8Array,
+): Promise<EncryptedFile> {
+  const response = await postToWorker<EncryptFileResponse>(
+    { type: "encryptFile", file, key, aad },
+    [file.buffer],
+  );
+  return { ciphertext: response.ciphertext, nonce: response.nonce };
+}
+
+export async function decryptFileInWorker(
+  ciphertext: Uint8Array,
+  nonce: Uint8Array,
+  key: Uint8Array,
+  aad: Uint8Array,
+): Promise<Uint8Array> {
+  const response = await postToWorker<DecryptFileResponse>(
+    { type: "decryptFile", ciphertext, nonce, key, aad },
+    [ciphertext.buffer],
+  );
+  return response.plaintext;
 }
 
 function decryptString(ciphertextHex: string, nonceHex: string, key: Uint8Array, aad: Uint8Array): string {
@@ -181,32 +267,6 @@ export function decryptPasteTitle(
   const pasteKey = xchacha20poly1305(vaultKey, keyNonce, AAD.PASTE_KEY).decrypt(encryptedKey);
   const { contentKey } = derivePasteSubkeys(pasteKey);
   return decryptString(titleCiphertextHex, titleNonceHex, contentKey, AAD.TITLE);
-}
-
-export async function createPaste(title: string, body: string, vaultKey: Uint8Array): Promise<PasteResult> {
-  const pasteKey = randomBytes(32);
-  const { contentKey } = derivePasteSubkeys(pasteKey);
-  const encryptedTitle = encryptString(title, contentKey, AAD.TITLE);
-  const encryptedBody = encryptString(body, contentKey, AAD.BODY);
-
-  const nonce = randomBytes(24);
-  const encryptedKey = xchacha20poly1305(vaultKey, nonce, AAD.PASTE_KEY).encrypt(pasteKey);
-
-  return {
-    encryptedTitleCiphertext: encryptedTitle.ciphertext,
-    encryptedTitleNonce: encryptedTitle.nonce,
-    encryptedBodyCiphertext: encryptedBody.ciphertext,
-    encryptedBodyNonce: encryptedBody.nonce,
-    encryptedPasteKeyCiphertext: encryptedKey,
-    encryptedPasteKeyNonce: nonce,
-    pasteKeyBase64Url: bytesToBase64Url(pasteKey),
-    pasteKey,
-  }
-}
-
-export interface EncryptedFile {
-  ciphertext: Uint8Array;
-  nonce: Uint8Array;
 }
 
 export function encryptFile(file: Uint8Array, key: Uint8Array, aad: Uint8Array): EncryptedFile {

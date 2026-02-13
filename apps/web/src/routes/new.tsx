@@ -29,7 +29,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import {
   createPaste,
-  encryptFile,
+  encryptFileInWorker,
   encryptFilename,
   derivePasteSubkeys,
   AAD,
@@ -159,7 +159,7 @@ function NewPasteForm() {
       setUploadProgress(`Uploading attachment ${i + 1} of ${validFiles.length}...`);
       const { file } = validFiles[i];
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const { ciphertext, nonce } = encryptFile(bytes, fileKey, AAD.FILE);
+      const { ciphertext, nonce } = await encryptFileInWorker(bytes, fileKey, AAD.FILE);
       const { ciphertext: filenameCiphertext, nonce: filenameNonce } = encryptFilename(
         file.name,
         metaKey,
