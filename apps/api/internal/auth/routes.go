@@ -8,10 +8,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type RegisterRoutesOpts struct {
+	DB        *pgxpool.Pool
+	Logger    *slog.Logger
+	InvSvc    InvitationsService
+}
+
 func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) *Service {
-	queries := sqlc.New(db)
-	svc := NewService(queries, db)
-	handler := NewHandler(svc, logger)
+	return RegisterRoutesWithOpts(r, RegisterRoutesOpts{DB: db, Logger: logger})
+}
+
+func RegisterRoutesWithOpts(r *gin.RouterGroup, opts RegisterRoutesOpts) *Service {
+	queries := sqlc.New(opts.DB)
+	svc := NewService(queries, opts.DB)
+	var handler *Handler
+	if opts.InvSvc != nil && opts.DB != nil {
+		handler = NewHandlerWithInvitations(svc, opts.InvSvc, opts.DB, opts.Logger)
+	} else {
+		handler = NewHandler(svc, opts.Logger)
+	}
 
 	r.POST("/auth/register", handler.Register)
 	r.POST("/auth/login/challenge", handler.LoginChallenge)

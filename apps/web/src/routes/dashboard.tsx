@@ -1,17 +1,28 @@
+import { useEffect } from "react";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
+import { useAppConfig } from "@/lib/app-config";
 import { AccountCard } from "@/components/dashboard/account-card";
 import { SessionsCard } from "@/components/dashboard/sessions-card";
 import { PastesCard } from "@/components/dashboard/pastes-card";
+import { InvitationsCard } from "@/components/dashboard/invitations-card";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 
-const TAB_OPTIONS = ["account", "sessions", "pastes"] as const;
-type Tab = (typeof TAB_OPTIONS)[number];
+const ALL_TABS = ["account", "sessions", "invitations", "pastes"] as const;
+type Tab = (typeof ALL_TABS)[number];
+
+function getTabOptions(requireInviteCode: boolean): Tab[] {
+  const base: Tab[] = ["account", "sessions", "pastes"];
+  if (requireInviteCode) {
+    return ["account", "sessions", "invitations", "pastes"];
+  }
+  return base;
+}
 
 export const Route = createFileRoute("/dashboard")({
   validateSearch: (search: Record<string, unknown>) => {
     const tab = search.tab as string | undefined;
-    if (TAB_OPTIONS.includes(tab as Tab)) {
+    if (ALL_TABS.includes(tab as Tab)) {
       return { tab: tab as Tab };
     }
     return { tab: "account" as Tab };
@@ -42,8 +53,18 @@ function Dashboard() {
 
 function DashboardContent() {
   const { user } = useAuth();
+  const { config } = useAppConfig();
   const navigate = useNavigate({ from: Route.fullPath });
   const { tab } = Route.useSearch();
+
+  const tabOptions = getTabOptions(config?.require_invite_code ?? false);
+  const effectiveTab = tabOptions.includes(tab) ? tab : ("account" as Tab);
+
+  useEffect(() => {
+    if (effectiveTab !== tab) {
+      navigate({ search: { tab: effectiveTab } });
+    }
+  }, [effectiveTab, tab, navigate]);
 
   if (!user) return null;
 
@@ -64,8 +85,8 @@ function DashboardContent() {
         aria-label="Dashboard sections"
         className="flex gap-1 border-b border-border"
       >
-        {TAB_OPTIONS.map((option) => {
-          const selected = tab === option;
+        {tabOptions.map((option) => {
+          const selected = effectiveTab === option;
           return (
             <button
               key={option}
@@ -92,7 +113,7 @@ function DashboardContent() {
         role="tabpanel"
         id="dashboard-panel-account"
         aria-labelledby="dashboard-tab-account"
-        hidden={tab !== "account"}
+        hidden={effectiveTab !== "account"}
       >
         <AccountCard user={user} />
       </section>
@@ -100,17 +121,25 @@ function DashboardContent() {
         role="tabpanel"
         id="dashboard-panel-sessions"
         aria-labelledby="dashboard-tab-sessions"
-        hidden={tab !== "sessions"}
+        hidden={effectiveTab !== "sessions"}
       >
-        <SessionsCard isActive={tab === "sessions"} />
+        <SessionsCard isActive={effectiveTab === "sessions"} />
+      </section>
+      <section
+        role="tabpanel"
+        id="dashboard-panel-invitations"
+        aria-labelledby="dashboard-tab-invitations"
+        hidden={effectiveTab !== "invitations"}
+      >
+        <InvitationsCard isActive={effectiveTab === "invitations"} />
       </section>
       <section
         role="tabpanel"
         id="dashboard-panel-pastes"
         aria-labelledby="dashboard-tab-pastes"
-        hidden={tab !== "pastes"}
+        hidden={effectiveTab !== "pastes"}
       >
-        <PastesCard isActive={tab === "pastes"} />
+        <PastesCard isActive={effectiveTab === "pastes"} />
       </section>
     </div>
   );

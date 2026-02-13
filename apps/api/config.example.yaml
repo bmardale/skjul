@@ -16,6 +16,10 @@ logger:
     level: "info"
     format: "json"
 
+invitations:
+    require_invite_code: false
+    default_quota: 5
+
 s3:
     bucket: "skjul-attachments"
     region: "us-east-1"

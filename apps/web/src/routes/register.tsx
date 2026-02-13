@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,17 +33,29 @@ const registerSchema = z.object({
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(128, "Password must be at most 128 characters"),
+  invite_code: z.string(),
 });
 
 function Register() {
   const { setVaultKey, refetchUser } = useAuth();
   const navigate = useNavigate();
   const [formError, setFormError] = useState<string | null>(null);
+  const [requireInviteCode, setRequireInviteCode] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    api
+      .getPublicConfig()
+      .then((cfg) => setRequireInviteCode(cfg.require_invite_code))
+      .catch(() => setRequireInviteCode(false))
+      .finally(() => setConfigLoaded(true));
+  }, []);
 
   const form = useForm({
     defaultValues: {
       username: "",
       password: "",
+      invite_code: "",
     },
     validators: {
       onSubmit: registerSchema,
@@ -51,15 +63,24 @@ function Register() {
     onSubmit: async ({ value }) => {
       setFormError(null);
 
+      if (requireInviteCode && !value.invite_code?.trim()) {
+        setFormError("Invite code is required.");
+        return;
+      }
+
       try {
         const registrationData = await generateRegistrationData(value.password);
-        await api.register({
+        const registerData: Parameters<typeof api.register>[0] = {
           username: value.username,
           auth_key: registrationData.authKey,
           salt: registrationData.salt,
           encrypted_vault_key: registrationData.encryptedVaultKey,
           vault_key_nonce: registrationData.vaultKeyNonce,
-        });
+        };
+        if (requireInviteCode && value.invite_code) {
+          registerData.invite_code = value.invite_code.trim();
+        }
+        await api.register(registerData);
 
         const { masterKey } = await deriveLoginKeys(
           value.password,
@@ -78,6 +99,10 @@ function Register() {
         const apiErr = getApiError(err);
         if (apiErr?.code === "USERNAME_TAKEN") {
           setFormError("Username is already taken.");
+        } else if (apiErr?.code === "INVITE_CODE_REQUIRED") {
+          setFormError("An invite code is required to register.");
+        } else if (apiErr?.code === "INVALID_INVITE_CODE") {
+          setFormError("Invalid or already used invite code.");
         } else {
           setFormError("Something went wrong. Please try again.");
         }
@@ -157,6 +182,34 @@ function Register() {
                 );
               }}
             />
+
+            {configLoaded && requireInviteCode && (
+              <form.Field
+                name="invite_code"
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor={field.name}>Invite code</FieldLabel>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        aria-invalid={isInvalid}
+                        placeholder="Enter your invite code"
+                        autoComplete="off"
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
+              />
+            )}
 
             {formError && (
               <p role="alert" className="text-sm text-destructive text-center">

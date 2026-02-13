@@ -16,3 +16,6 @@ SELECT salt, encrypted_vault_key, vault_key_nonce FROM users WHERE username = $1
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1;
+
+-- name: GetUserInviteQuota :one
+SELECT invite_quota FROM users WHERE id = $1;

@@ -9,10 +9,16 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig `mapstructure:"database"`
-	HTTP     HTTPConfig     `mapstructure:"http"`
-	Logger   LoggerConfig   `mapstructure:"logger"`
-	S3       S3Config       `mapstructure:"s3"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	HTTP        HTTPConfig        `mapstructure:"http"`
+	Logger      LoggerConfig      `mapstructure:"logger"`
+	S3          S3Config          `mapstructure:"s3"`
+	Invitations InvitationsConfig `mapstructure:"invitations"`
+}
+
+type InvitationsConfig struct {
+	RequireInviteCode bool `mapstructure:"require_invite_code"`
+	DefaultQuota      int  `mapstructure:"default_quota"` // initial invites per new user
 }
 
 type S3Config struct {
@@ -68,6 +74,9 @@ func Load() (*Config, error) {
 	v.SetDefault("logger.format", "json")
 
 	v.SetDefault("s3.presign_expiry", "15m")
+
+	v.SetDefault("invitations.require_invite_code", false)
+	v.SetDefault("invitations.default_quota", 5)
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()

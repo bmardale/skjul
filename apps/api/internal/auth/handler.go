@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"log/slog"
@@ -9,17 +10,35 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const sessionCookieMaxAge = 7 * 24 * 3600 // 7 days
 
+type InvalidInviteCodeError interface {
+	error
+	InvalidInviteCode()
+}
+
+type InvitationsService interface {
+	RequireInviteCode() bool
+	RedeemInviteTx(ctx context.Context, tx pgx.Tx, code string, userID uuid.UUID) error
+}
+
 type Handler struct {
 	service *Service
+	invSvc  InvitationsService
+	db      *pgxpool.Pool
 	logger  *slog.Logger
 }
 
 func NewHandler(service *Service, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
+}
+
+func NewHandlerWithInvitations(service *Service, invSvc InvitationsService, db *pgxpool.Pool, logger *slog.Logger) *Handler {
+	return &Handler{service: service, invSvc: invSvc, db: db, logger: logger}
 }
 
 type registerRequest struct {
@@ -28,6 +47,7 @@ type registerRequest struct {
 	Salt              string `json:"salt" binding:"required"`
 	EncryptedVaultKey string `json:"encrypted_vault_key" binding:"required"`
 	VaultKeyNonce     string `json:"vault_key_nonce" binding:"required"`
+	InviteCode        string `json:"invite_code"`
 }
 
 type loginChallengeRequest struct {
@@ -91,6 +111,16 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	if h.invSvc != nil && h.invSvc.RequireInviteCode() {
+		if req.InviteCode == "" {
+			c.JSON(http.StatusBadRequest, errorResponse{
+				Code:    "INVITE_CODE_REQUIRED",
+				Message: "invite code is required to register",
+			})
+			return
+		}
+	}
+
 	salt, err := hex.DecodeString(req.Salt)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResponse{Code: "INVALID_REQUEST", Message: "invalid hex: salt"})
@@ -107,24 +137,84 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	id, err := h.service.Register(c.Request.Context(), req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
-	if err != nil {
-		if errors.Is(err, ErrUsernameTaken) {
-			c.JSON(http.StatusConflict, errorResponse{
-				Code:    "USERNAME_TAKEN",
-				Message: "username already taken",
+	ctx := c.Request.Context()
+	var id uuid.UUID
+
+	if h.invSvc != nil && h.invSvc.RequireInviteCode() && h.db != nil {
+		tx, err := h.db.Begin(ctx)
+		if err != nil {
+			h.logger.Error("register: begin tx failed", "error", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Code:    "INTERNAL_ERROR",
+				Message: "failed to create user",
 			})
 			return
 		}
-		h.logger.Error("register failed", "error", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{
-			Code:    "INTERNAL_ERROR",
-			Message: "failed to create user",
-		})
-		return
+		defer tx.Rollback(ctx)
+
+		id, err = h.service.RegisterWithTx(ctx, tx, req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
+		if err != nil {
+			if errors.Is(err, ErrUsernameTaken) {
+				c.JSON(http.StatusConflict, errorResponse{
+					Code:    "USERNAME_TAKEN",
+					Message: "username already taken",
+				})
+				return
+			}
+			h.logger.Error("register failed", "error", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Code:    "INTERNAL_ERROR",
+				Message: "failed to create user",
+			})
+			return
+		}
+
+		if err := h.invSvc.RedeemInviteTx(ctx, tx, req.InviteCode, id); err != nil {
+			var invErr InvalidInviteCodeError
+			if errors.As(err, &invErr) {
+				c.JSON(http.StatusBadRequest, errorResponse{
+					Code:    "INVALID_INVITE_CODE",
+					Message: "invalid or already used invite code",
+				})
+				return
+			}
+			h.logger.Error("register: redeem invite failed", "error", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Code:    "INTERNAL_ERROR",
+				Message: "failed to create user",
+			})
+			return
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			h.logger.Error("register: commit tx failed", "error", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Code:    "INTERNAL_ERROR",
+				Message: "failed to create user",
+			})
+			return
+		}
+	} else {
+		var err error
+		id, err = h.service.Register(ctx, req.Username, req.AuthKey, salt, encryptedVaultKey, vaultKeyNonce)
+		if err != nil {
+			if errors.Is(err, ErrUsernameTaken) {
+				c.JSON(http.StatusConflict, errorResponse{
+					Code:    "USERNAME_TAKEN",
+					Message: "username already taken",
+				})
+				return
+			}
+			h.logger.Error("register failed", "error", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{
+				Code:    "INTERNAL_ERROR",
+				Message: "failed to create user",
+			})
+			return
+		}
 	}
 
-	result, err := h.service.Login(c.Request.Context(), req.Username, req.AuthKey)
+	result, err := h.service.Login(ctx, req.Username, req.AuthKey)
 	if err != nil {
 		h.logger.Error("register: auto-login failed", "error", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{

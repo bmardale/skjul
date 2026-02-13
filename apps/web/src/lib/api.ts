@@ -6,6 +6,24 @@ export interface RegisterRequest {
   salt: string;
   encrypted_vault_key: string;
   vault_key_nonce: string;
+  invite_code?: string;
+}
+
+export interface PublicConfig {
+  require_invite_code: boolean;
+}
+
+export interface Invitation {
+  id: string;
+  code: string;
+  used: boolean;
+  created_at: string;
+  used_at?: string;
+}
+
+export interface ListInvitationsResponse {
+  remaining_quota: number;
+  invitations: Invitation[];
 }
 
 export interface RegisterResponse {
@@ -144,8 +162,20 @@ export function getApiError(err: unknown): ApiError | undefined {
 }
 
 export const api = {
+  getPublicConfig() {
+    return client.get("api/v1/config").json<PublicConfig>();
+  },
+
   register(data: RegisterRequest) {
     return client.post("api/v1/auth/register", { json: data }).json<RegisterResponse>();
+  },
+
+  generateInvite() {
+    return client.post("api/v1/invitations").json<{ code: string }>();
+  },
+
+  listInvites() {
+    return client.get("api/v1/invitations").json<ListInvitationsResponse>();
   },
 
   loginChallenge(data: LoginChallengeRequest) {

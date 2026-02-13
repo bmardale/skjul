@@ -110,3 +110,14 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUs
 	err := row.Scan(&i.ID, &i.Username, &i.AuthHash)
 	return i, err
 }
+
+const getUserInviteQuota = `-- name: GetUserInviteQuota :one
+SELECT invite_quota FROM users WHERE id = $1
+`
+
+func (q *Queries) GetUserInviteQuota(ctx context.Context, id uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getUserInviteQuota, id)
+	var invite_quota int32
+	err := row.Scan(&invite_quota)
+	return invite_quota, err
+}

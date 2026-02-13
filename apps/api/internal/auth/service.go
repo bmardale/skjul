@@ -8,6 +8,7 @@ import (
 
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,12 +42,20 @@ type LoginChallenge struct {
 }
 
 func (s *Service) Register(ctx context.Context, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
+	return s.registerWithQueries(ctx, s.queries, username, authKey, salt, encryptedVaultKey, vaultKeyNonce)
+}
+
+func (s *Service) RegisterWithTx(ctx context.Context, tx pgx.Tx, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
+	return s.registerWithQueries(ctx, s.queries.WithTx(tx), username, authKey, salt, encryptedVaultKey, vaultKeyNonce)
+}
+
+func (s *Service) registerWithQueries(ctx context.Context, q *sqlc.Queries, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
 	authHash, err := HashAuthKey(authKey)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("hash auth key: %w", err)
 	}
 
-	id, err := s.queries.CreateUser(ctx, sqlc.CreateUserParams{
+	id, err := q.CreateUser(ctx, sqlc.CreateUserParams{
 		Username:          username,
 		AuthHash:          authHash,
 		Salt:              salt,

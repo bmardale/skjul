@@ -22,6 +22,15 @@ type Attachment struct {
 	MimeNonce          []byte
 }
 
+type Invitation struct {
+	ID        uuid.UUID
+	Code      string
+	CreatedBy uuid.UUID
+	UsedBy    pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+}
+
 type Note struct {
 	ID                uuid.UUID
 	UserID            uuid.UUID
@@ -53,4 +62,5 @@ type User struct {
 	VaultKeyNonce     []byte
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+	InviteQuota       int32
 }
