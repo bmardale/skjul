@@ -13,4 +13,5 @@ const (
 	CodeInvalidCredentials  = "INVALID_CREDENTIALS"
 	CodeAttachmentLimit     = "ATTACHMENT_LIMIT"
 	CodeAttachmentSizeLimit = "ATTACHMENT_SIZE_LIMIT"
+	CodeRateLimited         = "RATE_LIMITED"
 )

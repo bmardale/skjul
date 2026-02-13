@@ -9,6 +9,8 @@ import {
   decryptFilename,
   getPasteKeyFromHash,
   getPasteKeyFromVault,
+  derivePasteSubkeys,
+  AAD,
 } from "@/lib/crypto";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import {
@@ -40,7 +42,7 @@ export const Route = createFileRoute("/pastes/$id")({
   component: ViewPaste,
 });
 
-type Status = "loading" | "ready" | "not_found" | "missing_key" | "decrypt_error" | "error";
+type Status = "loading" | "ready" | "not_found" | "missing_key" | "decrypt_error" | "rate_limited" | "error";
 
 const ERROR_STATES: Record<
   Exclude<Status, "loading" | "ready">,
@@ -60,6 +62,10 @@ const ERROR_STATES: Record<
     title: "decryption failed",
     description:
       "The decryption key is invalid or the paste data is corrupted.",
+  },
+  rate_limited: {
+    title: "too many requests",
+    description: "Please wait a moment and try again.",
   },
   error: {
     title: "error",
@@ -101,10 +107,12 @@ function AttachmentItem({
   const containerRef = useRef<HTMLLIElement>(null);
   const [inView, setInView] = useState(false);
 
+  const { metaKey, fileKey } = derivePasteSubkeys(pasteKey);
+
   const getMimeType = (): string | null => {
     if (!att.mime_ciphertext || !att.mime_nonce || pasteKey.length === 0) return null;
     try {
-      return decryptFilename(att.mime_ciphertext, att.mime_nonce, pasteKey);
+      return decryptFilename(att.mime_ciphertext, att.mime_nonce, metaKey, AAD.MIME);
     } catch {
       return null;
     }
@@ -115,7 +123,8 @@ function AttachmentItem({
       return decryptFilename(
         att.filename_ciphertext,
         att.filename_nonce,
-        pasteKey
+        metaKey,
+        AAD.FILENAME
       );
     } catch {
       return "encrypted file";
@@ -138,7 +147,8 @@ function AttachmentItem({
         const plaintext = decryptFile(
           ciphertext,
           hexToBytes(att.content_nonce),
-          pasteKey
+          fileKey,
+          AAD.FILE
         );
         const copy = new Uint8Array(plaintext.length);
         copy.set(plaintext);
@@ -246,6 +256,8 @@ function AttachmentList({
 }) {
   const [downloading, setDownloading] = useState<string | null>(null);
 
+  const { fileKey, metaKey } = derivePasteSubkeys(pasteKey);
+
   const handleDownload = async (att: PasteAttachment) => {
     if (pasteKey.length === 0) return;
     setDownloading(att.id);
@@ -256,12 +268,14 @@ function AttachmentList({
       const plaintext = decryptFile(
         ciphertext,
         hexToBytes(att.content_nonce),
-        pasteKey
+        fileKey,
+        AAD.FILE
       );
       const filename = decryptFilename(
         att.filename_ciphertext,
         att.filename_nonce,
-        pasteKey
+        metaKey,
+        AAD.FILENAME
       );
       const copy = new Uint8Array(plaintext.length);
       copy.set(plaintext);
@@ -378,6 +392,8 @@ function PasteContent() {
         const apiErr = getApiError(err);
         if (apiErr?.code === "NOT_FOUND") {
           setStatus("not_found");
+        } else if (apiErr?.code === "RATE_LIMITED") {
+          setStatus("rate_limited");
         } else {
           setStatus("error");
         }

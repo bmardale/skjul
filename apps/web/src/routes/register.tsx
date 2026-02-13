@@ -16,7 +16,7 @@ import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { generateRegistrationData, deriveLoginKeys, decryptVaultKey } from "@/lib/crypto";
-import { api, getApiError } from "@/lib/api";
+import { api, getApiError, getRateLimitMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/register")({
@@ -97,7 +97,10 @@ function Register() {
         navigate({ to: "/" });
       } catch (err) {
         const apiErr = getApiError(err);
-        if (apiErr?.code === "USERNAME_TAKEN") {
+        const rateLimitMsg = getRateLimitMessage(err);
+        if (rateLimitMsg) {
+          setFormError(rateLimitMsg);
+        } else if (apiErr?.code === "USERNAME_TAKEN") {
           setFormError("Username is already taken.");
         } else if (apiErr?.code === "INVITE_CODE_REQUIRED") {
           setFormError("An invite code is required to register.");

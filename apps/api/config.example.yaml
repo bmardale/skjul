@@ -35,3 +35,24 @@ s3:
 cleanup:
     enabled: true
     interval: 10m
+
+rate_limit:
+    enabled: true
+    register:
+        requests: 3
+        window: 10m
+        burst: 3
+    login_challenge:
+        requests: 10
+        window: 1m
+        burst: 10
+    login:
+        requests: 5
+        window: 1m
+        burst: 5
+    paste_get:
+        requests: 60
+        window: 1m
+        burst: 60
+    entry_ttl: 30m
+    cleanup_interval: 5m

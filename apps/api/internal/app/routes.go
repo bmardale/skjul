@@ -9,6 +9,7 @@ import (
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/bmardale/skjul/internal/invitations"
 	"github.com/bmardale/skjul/internal/pastes"
+	"github.com/bmardale/skjul/internal/ratelimit"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,6 +17,7 @@ func (a *App) setupRoutes() {
 	a.router.NoRoute(a.noRoute)
 
 	v1 := a.router.Group("/api/v1")
+	v1.Use(ratelimit.SensitivePaths(a.config.RateLimit))
 	v1.GET("/health", a.healthCheck)
 	v1.GET("/config", a.publicConfig)
 

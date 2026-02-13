@@ -186,6 +186,18 @@ export function getApiError(err: unknown): ApiError | undefined {
   return (err as HTTPError & { apiError?: ApiError })?.apiError;
 }
 
+export function getRateLimitMessage(err: unknown): string | undefined {
+  const apiErr = getApiError(err);
+  if (apiErr?.code !== "RATE_LIMITED") return undefined;
+  const httpErr = err as HTTPError & { response?: Response };
+  const retryAfter = httpErr.response?.headers?.get("Retry-After");
+  if (retryAfter) {
+    const sec = parseInt(retryAfter, 10);
+    if (!isNaN(sec)) return `Too many requests. Please try again in ${sec} seconds.`;
+  }
+  return "Too many requests. Please try again later.";
+}
+
 export const api = {
   getPublicConfig() {
     return client.get("api/v1/config").json<PublicConfig>();

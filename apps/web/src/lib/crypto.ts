@@ -4,6 +4,30 @@ import { sha256 } from "@noble/hashes/sha2.js"
 import { argon2id } from "@noble/hashes/argon2.js";
 import { xchacha20poly1305} from "@noble/ciphers/chacha.js"
 
+const encoder = new TextEncoder();
+
+function deriveSubkey(key: Uint8Array, context: string): Uint8Array {
+  return hmac(sha256, key, encoder.encode(context));
+}
+
+export const AAD = {
+  TITLE: encoder.encode("skjul:v1:title"),
+  BODY: encoder.encode("skjul:v1:body"),
+  PASTE_KEY: encoder.encode("skjul:v1:paste_key"),
+  FILE: encoder.encode("skjul:v1:file"),
+  FILENAME: encoder.encode("skjul:v1:filename"),
+  MIME: encoder.encode("skjul:v1:mime"),
+  VAULT_KEY: encoder.encode("skjul:v1:vault_key"),
+} as const;
+
+export function derivePasteSubkeys(pasteKey: Uint8Array) {
+  return {
+    contentKey: deriveSubkey(pasteKey, "paste_content_v1"),
+    metaKey: deriveSubkey(pasteKey, "paste_meta_v1"),
+    fileKey: deriveSubkey(pasteKey, "paste_file_v1"),
+  };
+}
+
 function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
@@ -25,10 +49,10 @@ interface RegistrationResult {
     vaultKeyNonce: string;
 }
 
-function encryptString(text: string, key: Uint8Array) {
+function encryptString(text: string, key: Uint8Array, aad: Uint8Array) {
   const nonce = randomBytes(24);
-  const content = new TextEncoder().encode(text);
-  const ciphertext = xchacha20poly1305(key, nonce).encrypt(content);
+  const content = encoder.encode(text);
+  const ciphertext = xchacha20poly1305(key, nonce, aad).encrypt(content);
   return { ciphertext, nonce };
 }
 
@@ -41,10 +65,11 @@ export async function generateRegistrationData(password: string): Promise<Regist
         dkLen: 32,
     });
 
-    const authKey = hmac(sha256, masterKey, new TextEncoder().encode("auth_v1"));
+    const authKey = deriveSubkey(masterKey, "auth_v1");
+    const encKey = deriveSubkey(masterKey, "master_enc_v1");
     const vaultKey = randomBytes(32);
     const vaultKeyNonce = randomBytes(24);
-    const encryptedVaultKey = xchacha20poly1305(masterKey, vaultKeyNonce).encrypt(vaultKey);
+    const encryptedVaultKey = xchacha20poly1305(encKey, vaultKeyNonce, AAD.VAULT_KEY).encrypt(vaultKey);
 
     return {
         salt: bytesToHex(salt),
@@ -65,7 +90,7 @@ export async function deriveLoginKeys(
     p: 1,
     dkLen: 32,
   });
-  const authKey = hmac(sha256, masterKey, new TextEncoder().encode("auth_v1"));
+  const authKey = deriveSubkey(masterKey, "auth_v1");
   return { masterKey, authKey: bytesToHex(authKey) };
 }
 
@@ -74,9 +99,10 @@ export async function decryptVaultKey(
   encryptedVaultKeyHex: string,
   nonceHex: string,
 ): Promise<Uint8Array> {
+  const encKey = deriveSubkey(masterKey, "master_enc_v1");
   const encryptedVaultKey = hexToBytes(encryptedVaultKeyHex);
   const nonce = hexToBytes(nonceHex);
-  return xchacha20poly1305(masterKey, nonce).decrypt(encryptedVaultKey);
+  return xchacha20poly1305(encKey, nonce, AAD.VAULT_KEY).decrypt(encryptedVaultKey);
 }
 
 export interface PasteResult {
@@ -90,10 +116,10 @@ export interface PasteResult {
   pasteKey: Uint8Array;
 }
 
-function decryptString(ciphertextHex: string, nonceHex: string, key: Uint8Array): string {
+function decryptString(ciphertextHex: string, nonceHex: string, key: Uint8Array, aad: Uint8Array): string {
   const ciphertext = hexToBytes(ciphertextHex);
   const nonce = hexToBytes(nonceHex);
-  const plaintext = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  const plaintext = xchacha20poly1305(key, nonce, aad).decrypt(ciphertext);
   return new TextDecoder().decode(plaintext);
 }
 
@@ -108,9 +134,10 @@ export function decryptPaste(
 ): { title: string; body: string } {
   const encryptedKey = hexToBytes(encryptedPasteKeyCiphertextHex);
   const keyNonce = hexToBytes(encryptedPasteKeyNonceHex);
-  const pasteKey = xchacha20poly1305(vaultKey, keyNonce).decrypt(encryptedKey);
-  const title = decryptString(titleCiphertextHex, titleNonceHex, pasteKey);
-  const body = decryptString(bodyCiphertextHex, bodyNonceHex, pasteKey);
+  const pasteKey = xchacha20poly1305(vaultKey, keyNonce, AAD.PASTE_KEY).decrypt(encryptedKey);
+  const { contentKey } = derivePasteSubkeys(pasteKey);
+  const title = decryptString(titleCiphertextHex, titleNonceHex, contentKey, AAD.TITLE);
+  const body = decryptString(bodyCiphertextHex, bodyNonceHex, contentKey, AAD.BODY);
   return { title, body };
 }
 
@@ -125,7 +152,7 @@ export function getPasteKeyFromVault(
 ): Uint8Array {
   const encryptedKey = hexToBytes(encryptedPasteKeyCiphertextHex);
   const keyNonce = hexToBytes(encryptedPasteKeyNonceHex);
-  return xchacha20poly1305(vaultKey, keyNonce).decrypt(encryptedKey);
+  return xchacha20poly1305(vaultKey, keyNonce, AAD.PASTE_KEY).decrypt(encryptedKey);
 }
 
 export function decryptPasteWithKey(
@@ -136,8 +163,9 @@ export function decryptPasteWithKey(
   bodyNonceHex: string,
 ): { title: string; body: string } {
   const pasteKey = base64UrlToBytes(pasteKeyBase64Url);
-  const title = decryptString(titleCiphertextHex, titleNonceHex, pasteKey);
-  const body = decryptString(bodyCiphertextHex, bodyNonceHex, pasteKey);
+  const { contentKey } = derivePasteSubkeys(pasteKey);
+  const title = decryptString(titleCiphertextHex, titleNonceHex, contentKey, AAD.TITLE);
+  const body = decryptString(bodyCiphertextHex, bodyNonceHex, contentKey, AAD.BODY);
   return { title, body };
 }
 
@@ -150,17 +178,19 @@ export function decryptPasteTitle(
 ): string {
   const encryptedKey = hexToBytes(encryptedPasteKeyCiphertextHex);
   const keyNonce = hexToBytes(encryptedPasteKeyNonceHex);
-  const pasteKey = xchacha20poly1305(vaultKey, keyNonce).decrypt(encryptedKey);
-  return decryptString(titleCiphertextHex, titleNonceHex, pasteKey);
+  const pasteKey = xchacha20poly1305(vaultKey, keyNonce, AAD.PASTE_KEY).decrypt(encryptedKey);
+  const { contentKey } = derivePasteSubkeys(pasteKey);
+  return decryptString(titleCiphertextHex, titleNonceHex, contentKey, AAD.TITLE);
 }
 
 export async function createPaste(title: string, body: string, vaultKey: Uint8Array): Promise<PasteResult> {
   const pasteKey = randomBytes(32);
-  const encryptedTitle = encryptString(title, pasteKey);
-  const encryptedBody = encryptString(body, pasteKey);
+  const { contentKey } = derivePasteSubkeys(pasteKey);
+  const encryptedTitle = encryptString(title, contentKey, AAD.TITLE);
+  const encryptedBody = encryptString(body, contentKey, AAD.BODY);
 
   const nonce = randomBytes(24);
-  const encryptedKey = xchacha20poly1305(vaultKey, nonce).encrypt(pasteKey);
+  const encryptedKey = xchacha20poly1305(vaultKey, nonce, AAD.PASTE_KEY).encrypt(pasteKey);
 
   return {
     encryptedTitleCiphertext: encryptedTitle.ciphertext,
@@ -179,24 +209,24 @@ export interface EncryptedFile {
   nonce: Uint8Array;
 }
 
-export function encryptFile(file: Uint8Array, key: Uint8Array): EncryptedFile {
+export function encryptFile(file: Uint8Array, key: Uint8Array, aad: Uint8Array): EncryptedFile {
   const nonce = randomBytes(24);
-  const ciphertext = xchacha20poly1305(key, nonce).encrypt(file);
+  const ciphertext = xchacha20poly1305(key, nonce, aad).encrypt(file);
   return { ciphertext, nonce };
 }
 
-export function decryptFile(ciphertext: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array {
-  return xchacha20poly1305(key, nonce).decrypt(ciphertext);
+export function decryptFile(ciphertext: Uint8Array, nonce: Uint8Array, key: Uint8Array, aad: Uint8Array): Uint8Array {
+  return xchacha20poly1305(key, nonce, aad).decrypt(ciphertext);
 }
 
-export function encryptFilename(filename: string, key: Uint8Array): EncryptedFile {
-  const content = new TextEncoder().encode(filename);
-  return encryptFile(content, key);
+export function encryptFilename(filename: string, key: Uint8Array, aad: Uint8Array): EncryptedFile {
+  const content = encoder.encode(filename);
+  return encryptFile(content, key, aad);
 }
 
-export function decryptFilename(ciphertextHex: string, nonceHex: string, key: Uint8Array): string {
+export function decryptFilename(ciphertextHex: string, nonceHex: string, key: Uint8Array, aad: Uint8Array): string {
   const ciphertext = hexToBytes(ciphertextHex);
   const nonce = hexToBytes(nonceHex);
-  const plaintext = xchacha20poly1305(key, nonce).decrypt(ciphertext);
+  const plaintext = xchacha20poly1305(key, nonce, aad).decrypt(ciphertext);
   return new TextDecoder().decode(plaintext);
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Attachment01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons";
@@ -67,6 +67,8 @@ function decryptPasteListItem(
 
 export function PastesCard({ isActive }: { isActive: boolean }) {
   const { vaultKey } = useAuth();
+  const hasLoadedRef = useRef(false);
+  const prevVaultKeyRef = useRef(vaultKey);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -108,11 +110,20 @@ export function PastesCard({ isActive }: { isActive: boolean }) {
     [vaultKey],
   );
 
-  // Initial load
+  // Reset loaded state when vaultKey changes (e.g. account switch)
   useEffect(() => {
-    if (isActive && vaultKey) {
-      loadPastes();
+    if (vaultKey !== prevVaultKeyRef.current) {
+      prevVaultKeyRef.current = vaultKey;
+      hasLoadedRef.current = false;
     }
+  }, [vaultKey]);
+
+  // Initial load (skip refetch when switching back to tab—use cached data)
+  useEffect(() => {
+    if (!isActive || !vaultKey) return;
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    loadPastes();
   }, [isActive, vaultKey, loadPastes]);
 
   const handleRefresh = () => {

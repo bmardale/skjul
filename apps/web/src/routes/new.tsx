@@ -31,6 +31,8 @@ import {
   createPaste,
   encryptFile,
   encryptFilename,
+  derivePasteSubkeys,
+  AAD,
 } from "@/lib/crypto";
 import { LANGUAGE_OPTIONS, type LanguageValue } from "@/lib/languages";
 import { PasteBody } from "@/components/paste-body";
@@ -155,19 +157,22 @@ function NewPasteForm() {
       });
 
       const validFiles = selectedFiles.filter((f) => !f.error);
+      const { fileKey, metaKey } = derivePasteSubkeys(paste.pasteKey);
       for (let i = 0; i < validFiles.length; i++) {
         setUploadProgress(`Uploading attachment ${i + 1} of ${validFiles.length}...`);
         const { file } = validFiles[i];
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const { ciphertext, nonce } = encryptFile(bytes, paste.pasteKey);
+        const { ciphertext, nonce } = encryptFile(bytes, fileKey, AAD.FILE);
         const { ciphertext: filenameCiphertext, nonce: filenameNonce } = encryptFilename(
           file.name,
-          paste.pasteKey
+          metaKey,
+          AAD.FILENAME
         );
         const mimeType = file.type || "application/octet-stream";
         const { ciphertext: mimeCiphertext, nonce: mimeNonce } = encryptFilename(
           mimeType,
-          paste.pasteKey
+          metaKey,
+          AAD.MIME
         );
 
         const attachmentRes = await api.createAttachment(res.id, {

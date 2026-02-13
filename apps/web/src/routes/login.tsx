@@ -13,7 +13,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
-import { api, getApiError } from "@/lib/api";
+import { api, getApiError, getRateLimitMessage } from "@/lib/api";
 import { deriveLoginKeys, decryptVaultKey } from "@/lib/crypto";
 import { useAuth } from "@/lib/auth";
 
@@ -43,27 +43,22 @@ function Login() {
       setFormError(null);
 
       try {
-        // 1. Get challenge (salt only)
         const challenge = await api.loginChallenge({
           username: value.username,
         });
 
-        // 2. Derive masterKey + authKey from password + salt
         const { masterKey, authKey } = await deriveLoginKeys(
           value.password,
           challenge.salt,
         );
 
-        // 3. Authenticate with derived auth key (sets session cookie)
         await api.login({
           username: value.username,
           auth_key: authKey,
         });
 
-        // 4. Fetch encrypted vault key from /me (now authenticated)
         const me = await api.me();
 
-        // 5. Decrypt vault key with masterKey still in memory
         const vaultKey = await decryptVaultKey(
           masterKey,
           me.encrypted_vault_key,
@@ -73,11 +68,13 @@ function Login() {
         setVaultKey(vaultKey);
         await refetchUser();
 
-        // 6. Redirect to dashboard
         navigate({ to: "/" });
       } catch (err) {
         const apiErr = getApiError(err);
-        if (apiErr?.code === "INVALID_CREDENTIALS") {
+        const rateLimitMsg = getRateLimitMessage(err);
+        if (rateLimitMsg) {
+          setFormError(rateLimitMsg);
+        } else if (apiErr?.code === "INVALID_CREDENTIALS") {
           setFormError("Invalid username or password.");
         } else {
           setFormError("Something went wrong. Please try again.");

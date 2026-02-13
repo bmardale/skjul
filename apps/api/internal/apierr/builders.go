@@ -7,6 +7,7 @@ var (
 	ErrForbidden    = New(http.StatusForbidden, CodeForbidden, "forbidden")
 	ErrNotFound     = New(http.StatusNotFound, CodeNotFound, "not found")
 	ErrInternal     = New(http.StatusInternalServerError, CodeInternalError, "internal error")
+	ErrRateLimited  = New(http.StatusTooManyRequests, CodeRateLimited, "too many requests")
 )
 
 func BadRequest(msg string) *APIError {

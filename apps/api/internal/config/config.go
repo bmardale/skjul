@@ -16,10 +16,27 @@ type Config struct {
 	Invitations InvitationsConfig `mapstructure:"invitations"`
 	Admin       AdminConfig       `mapstructure:"admin"`
 	Cleanup     CleanupConfig     `mapstructure:"cleanup"`
+	RateLimit   RateLimitConfig   `mapstructure:"rate_limit"`
 }
 
 type AdminConfig struct {
 	Admins []string `mapstructure:"admins"` // usernames
+}
+
+type RateLimitConfig struct {
+	Enabled         bool          `mapstructure:"enabled"`
+	Register        LimitConfig   `mapstructure:"register"`
+	LoginChallenge  LimitConfig   `mapstructure:"login_challenge"`
+	Login           LimitConfig   `mapstructure:"login"`
+	PasteGet        LimitConfig   `mapstructure:"paste_get"`
+	EntryTTL        time.Duration `mapstructure:"entry_ttl"`
+	CleanupInterval time.Duration `mapstructure:"cleanup_interval"`
+}
+
+type LimitConfig struct {
+	Requests int           `mapstructure:"requests"`
+	Window   time.Duration `mapstructure:"window"`
+	Burst    int           `mapstructure:"burst"`
 }
 
 type CleanupConfig struct {
@@ -91,6 +108,22 @@ func Load() (*Config, error) {
 
 	v.SetDefault("cleanup.enabled", true)
 	v.SetDefault("cleanup.interval", "10m")
+
+	v.SetDefault("rate_limit.enabled", true)
+	v.SetDefault("rate_limit.register.requests", 3)
+	v.SetDefault("rate_limit.register.window", "10m")
+	v.SetDefault("rate_limit.register.burst", 3)
+	v.SetDefault("rate_limit.login_challenge.requests", 10)
+	v.SetDefault("rate_limit.login_challenge.window", "1m")
+	v.SetDefault("rate_limit.login_challenge.burst", 10)
+	v.SetDefault("rate_limit.login.requests", 5)
+	v.SetDefault("rate_limit.login.window", "1m")
+	v.SetDefault("rate_limit.login.burst", 5)
+	v.SetDefault("rate_limit.paste_get.requests", 60)
+	v.SetDefault("rate_limit.paste_get.window", "1m")
+	v.SetDefault("rate_limit.paste_get.burst", 60)
+	v.SetDefault("rate_limit.entry_ttl", "30m")
+	v.SetDefault("rate_limit.cleanup_interval", "5m")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()

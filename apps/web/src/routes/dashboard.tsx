@@ -99,7 +99,7 @@ function DashboardContent() {
       <div
         role="tablist"
         aria-label="Dashboard sections"
-        className="flex gap-1 border-b border-border"
+        className="flex gap-1 border-b border-border overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0"
       >
         {tabOptions.map((option) => {
           const selected = effectiveTab === option;
@@ -113,7 +113,7 @@ function DashboardContent() {
               aria-controls={`dashboard-panel-${option}`}
               id={`dashboard-tab-${option}`}
               onClick={() => navigate({ search: { tab: option } })}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`shrink-0 px-3 py-1.5 text-xs font-medium transition-colors ${
                 selected
                   ? "text-foreground border-b-2 border-foreground -mb-px"
                   : "text-muted-foreground hover:text-foreground"
