@@ -56,10 +56,13 @@ func main() {
 	}
 
 	application := app.New(cfg, slog, db, s3Client)
-	if err := application.CleanupExpiredNotes(context.Background()); err != nil {
-		slog.WarnContext(context.Background(), "expired notes cleanup failed", "error", err)
-	}
-	if err := application.Start(context.Background()); err != nil {
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go application.StartCleanupLoop(ctx)
+
+	if err := application.Start(ctx); err != nil {
 		log.Fatalf("application err: %v", err)
 	}
 }

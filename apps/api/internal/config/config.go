@@ -14,6 +14,12 @@ type Config struct {
 	Logger      LoggerConfig      `mapstructure:"logger"`
 	S3          S3Config          `mapstructure:"s3"`
 	Invitations InvitationsConfig `mapstructure:"invitations"`
+	Cleanup     CleanupConfig     `mapstructure:"cleanup"`
+}
+
+type CleanupConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Interval time.Duration `mapstructure:"interval"`
 }
 
 type InvitationsConfig struct {
@@ -77,6 +83,9 @@ func Load() (*Config, error) {
 
 	v.SetDefault("invitations.require_invite_code", false)
 	v.SetDefault("invitations.default_quota", 5)
+
+	v.SetDefault("cleanup.enabled", true)
+	v.SetDefault("cleanup.interval", "10m")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()

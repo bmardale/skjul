@@ -28,3 +28,7 @@ s3:
     secret_access_key: ""
     presign_expiry: 15m
     cdn_base_url: "https://cdn.example.com"
+
+cleanup:
+    enabled: true
+    interval: 10m

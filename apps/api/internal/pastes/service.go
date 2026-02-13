@@ -27,9 +27,9 @@ var (
 )
 
 type Service struct {
-	queries   *sqlc.Queries
-	db        *pgxpool.Pool
-	s3Client  *storage.S3Client
+	queries  *sqlc.Queries
+	db       *pgxpool.Pool
+	s3Client *storage.S3Client
 }
 
 func NewService(queries *sqlc.Queries, db *pgxpool.Pool, s3Client *storage.S3Client) *Service {
@@ -83,15 +83,15 @@ func (s *Service) Create(
 	}
 
 	row, err := s.queries.CreateNote(ctx, sqlc.CreateNoteParams{
-		UserID:           userID,
-		BurnAfterRead:    burnAfterRead,
-		TitleCiphertext:  titleCiphertext,
-		TitleNonce:       titleNonce,
-		BodyCiphertext:   bodyCiphertext,
-		BodyNonce:        bodyNonce,
-		EncryptedKey:     encryptedKey,
+		UserID:            userID,
+		BurnAfterRead:     burnAfterRead,
+		TitleCiphertext:   titleCiphertext,
+		TitleNonce:        titleNonce,
+		BodyCiphertext:    bodyCiphertext,
+		BodyNonce:         bodyNonce,
+		EncryptedKey:      encryptedKey,
 		EncryptedKeyNonce: encryptedKeyNonce,
-		ExpiresAt:        pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		ExpiresAt:         pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create note: %w", err)
@@ -219,7 +219,6 @@ func (s *Service) DeleteByID(ctx context.Context, userID, noteID uuid.UUID) erro
 	})
 }
 
-// CleanupExpiredNotes deletes S3 objects for expired notes' attachments, then deletes expired notes.
 func (s *Service) CleanupExpiredNotes(ctx context.Context) error {
 	if s.s3Client != nil {
 		s3Keys, err := s.queries.GetAttachmentS3KeysForExpiredNotes(ctx)

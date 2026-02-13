@@ -103,3 +103,36 @@ func (a *App) CleanupExpiredNotes(ctx context.Context) error {
 	svc := pastes.NewService(queries, a.db, a.s3Client)
 	return svc.CleanupExpiredNotes(ctx)
 }
+
+func (a *App) StartCleanupLoop(ctx context.Context) {
+	if !a.config.Cleanup.Enabled {
+		a.logger.Info("cleanup loop disabled")
+		return
+	}
+
+	interval := a.config.Cleanup.Interval
+	if interval <= 0 {
+		interval = 10 * time.Minute
+	}
+
+	a.logger.Info("cleanup loop starting", "interval", interval)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	if err := a.CleanupExpiredNotes(ctx); err != nil {
+		a.logger.Warn("initial cleanup failed", "error", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			a.logger.Info("cleanup loop stopping")
+			return
+		case <-ticker.C:
+			if err := a.CleanupExpiredNotes(ctx); err != nil {
+				a.logger.Warn("cleanup failed", "error", err)
+			}
+		}
+	}
+}
