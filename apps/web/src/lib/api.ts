@@ -90,6 +90,7 @@ export interface CreatePasteRequest {
   encrypted_paste_key_nonce: string;
   expiration: string;
   burn_after_reading: boolean;
+  language_id?: string;
 }
 
 export interface CreatePasteResponse {
@@ -120,6 +121,7 @@ export interface GetPasteResponse {
   encrypted_paste_key_nonce: string;
   created_at: string;
   expires_at: string;
+  language_id?: string;
   attachments: PasteAttachment[];
 }
 
@@ -146,6 +148,7 @@ export interface PasteListItem {
   encrypted_paste_key_nonce: string;
   created_at: string;
   expires_at: string;
+  language_id?: string;
   attachment_count: number;
 }
 

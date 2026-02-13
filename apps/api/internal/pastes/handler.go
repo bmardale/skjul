@@ -30,6 +30,7 @@ type createPasteRequest struct {
 	EncryptedPasteKeyNonce      string `json:"encrypted_paste_key_nonce" binding:"required"`
 	Expiration                  string `json:"expiration" binding:"required,oneof=30m 1h 1d 7d 30d never"`
 	BurnAfterReading            bool   `json:"burn_after_reading"`
+	LanguageID                  string `json:"language_id"`
 }
 
 type createPasteResponse struct {
@@ -60,6 +61,7 @@ type getPasteResponse struct {
 	EncryptedPasteKeyNonce      string               `json:"encrypted_paste_key_nonce"`
 	CreatedAt                   string               `json:"created_at"`
 	ExpiresAt                   string               `json:"expires_at"`
+	LanguageID                  string               `json:"language_id"`
 	Attachments                 []attachmentResponse `json:"attachments"`
 }
 
@@ -72,6 +74,7 @@ type pasteListItem struct {
 	EncryptedPasteKeyNonce      string `json:"encrypted_paste_key_nonce"`
 	CreatedAt                   string `json:"created_at"`
 	ExpiresAt                   string `json:"expires_at"`
+	LanguageID                  string `json:"language_id"`
 	AttachmentCount             int64  `json:"attachment_count"`
 }
 
@@ -142,6 +145,11 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 		return
 	}
 
+	languageID := req.LanguageID
+	if languageID == "" {
+		languageID = "plaintext"
+	}
+
 	result, err := h.service.Create(
 		c.Request.Context(),
 		userID,
@@ -150,6 +158,7 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 		bodyCiphertext, bodyNonce,
 		encryptedKey, encryptedKeyNonce,
 		req.Expiration,
+		languageID,
 	)
 	if err != nil {
 		h.logger.Error("create paste failed", "error", err)
@@ -220,6 +229,7 @@ func (h *Handler) GetPaste(c *gin.Context) {
 		EncryptedPasteKeyNonce:      hex.EncodeToString(note.EncryptedKeyNonce),
 		CreatedAt:                   note.CreatedAt.Format(time.RFC3339),
 		ExpiresAt:                   note.ExpiresAt.Format(time.RFC3339),
+		LanguageID:                  note.LanguageID,
 		Attachments:                 attResp,
 	})
 }
@@ -261,6 +271,7 @@ func (h *Handler) ListPastes(c *gin.Context) {
 			EncryptedPasteKeyNonce:      hex.EncodeToString(n.EncryptedKeyNonce),
 			CreatedAt:                   n.CreatedAt.Format(time.RFC3339),
 			ExpiresAt:                   n.ExpiresAt.Format(time.RFC3339),
+			LanguageID:                  n.LanguageID,
 			AttachmentCount:             n.AttachmentCount,
 		})
 	}

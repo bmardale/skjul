@@ -5,13 +5,14 @@ INSERT INTO notes (
   title_ciphertext, title_nonce,
   body_ciphertext, body_nonce,
   encrypted_key, encrypted_key_nonce,
-  expires_at
+  expires_at,
+  language_id
 ) VALUES (
   $1, $2,
   $3, $4,
   $5, $6,
   $7, $8,
-  $9
+  $9, $10
 )
 RETURNING id, created_at, expires_at;
 
@@ -24,7 +25,8 @@ SELECT
   title_ciphertext, title_nonce,
   body_ciphertext, body_nonce,
   encrypted_key, encrypted_key_nonce,
-  created_at, expires_at
+  created_at, expires_at,
+  language_id
 FROM notes
 WHERE id = $1
   AND expires_at > now();
@@ -37,6 +39,7 @@ SELECT
   n.encrypted_key, n.encrypted_key_nonce,
   n.created_at,
   n.expires_at,
+  n.language_id,
   coalesce(a.attachment_count, 0)::bigint as attachment_count
 FROM notes n
 LEFT JOIN (
@@ -56,6 +59,7 @@ SELECT
   n.encrypted_key, n.encrypted_key_nonce,
   n.created_at,
   n.expires_at,
+  n.language_id,
   coalesce(a.attachment_count, 0)::bigint as attachment_count
 FROM notes n
 LEFT JOIN (

@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { PasteBody } from "@/components/paste-body";
 
 export const Route = createFileRoute("/pastes/$id")({
   component: ViewPaste,
@@ -541,9 +542,10 @@ function PasteContent() {
         <Separator />
 
         <CardContent className="pt-4 space-y-4">
-          <pre className="whitespace-pre-wrap break-words font-mono text-sm">
-            {decrypted!.body}
-          </pre>
+          <PasteBody
+            body={decrypted!.body}
+            language={paste!.language_id ?? "plaintext"}
+          />
           {(paste!.attachments?.length ?? 0) > 0 && (
             <AttachmentList
               attachments={paste!.attachments ?? []}

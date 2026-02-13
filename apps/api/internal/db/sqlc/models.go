@@ -43,6 +43,7 @@ type Note struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         pgtype.Timestamptz
 	ExpiresAt         pgtype.Timestamptz
+	LanguageID        pgtype.Text
 }
 
 type Session struct {

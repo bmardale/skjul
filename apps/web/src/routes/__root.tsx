@@ -15,7 +15,7 @@ const RootLayout = () => (
       </div>
     </AuthProvider>
     </AppConfigProvider>
-    <TanStackRouterDevtools />
+    {import.meta.env.DEV && <TanStackRouterDevtools />}
   </ThemeProvider>
 );
 

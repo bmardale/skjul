@@ -32,6 +32,8 @@ import {
   encryptFile,
   encryptFilename,
 } from "@/lib/crypto";
+import { LANGUAGE_OPTIONS, type LanguageValue } from "@/lib/languages";
+import { PasteBody } from "@/components/paste-body";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_ATTACHMENTS = 5;
@@ -59,6 +61,29 @@ const newPasteSchema = z.object({
     .max(128, "Title must be at most 128 characters"),
   expiration: z.enum(["30m", "1h", "1d", "7d", "30d", "never"]),
   burn_after_reading: z.boolean(),
+  language_id: z.enum([
+    "plaintext",
+    "javascript",
+    "typescript",
+    "tsx",
+    "python",
+    "go",
+    "rust",
+    "json",
+    "html",
+    "css",
+    "sql",
+    "bash",
+    "markdown",
+    "yaml",
+    "xml",
+    "java",
+    "c",
+    "cpp",
+    "csharp",
+    "ruby",
+    "php",
+  ]),
   body: z
     .string()
     .min(1, "Body cannot be empty")
@@ -84,6 +109,7 @@ interface CreatedPaste {
   shareUrl: string;
   title: string;
   body: string;
+  language_id: string;
 }
 
 interface SelectedFile {
@@ -104,6 +130,7 @@ function NewPasteForm() {
       title: "",
       expiration: "1d" as ExpirationValue,
       burn_after_reading: false,
+      language_id: "plaintext" as LanguageValue,
       body: "",
     },
     validators: {
@@ -124,6 +151,7 @@ function NewPasteForm() {
         encrypted_paste_key_nonce: bytesToHex(paste.encryptedPasteKeyNonce),
         expiration: value.expiration,
         burn_after_reading: value.burn_after_reading,
+        language_id: value.language_id,
       });
 
       const validFiles = selectedFiles.filter((f) => !f.error);
@@ -161,6 +189,7 @@ function NewPasteForm() {
         shareUrl,
         title: value.title,
         body: value.body,
+        language_id: value.language_id,
       });
     },
   });
@@ -245,9 +274,7 @@ function NewPasteForm() {
 
             <div className="space-y-2">
               <p className="text-sm font-medium">{created.title}</p>
-              <pre className="whitespace-pre-wrap break-words font-mono text-sm text-muted-foreground">
-                {created.body}
-              </pre>
+              <PasteBody body={created.body} language={created.language_id} />
             </div>
           </CardContent>
         </Card>
@@ -325,6 +352,30 @@ function NewPasteForm() {
                       </SelectTrigger>
                       <SelectContent>
                         {expirationOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
+              />
+
+              <form.Field
+                name="language_id"
+                children={(field) => (
+                  <Field className="sm:w-40">
+                    <FieldLabel htmlFor={field.name}>Language</FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(v) => field.handleChange(v as LanguageValue)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LANGUAGE_OPTIONS.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
                           </SelectItem>

@@ -19,13 +19,14 @@ INSERT INTO notes (
   title_ciphertext, title_nonce,
   body_ciphertext, body_nonce,
   encrypted_key, encrypted_key_nonce,
-  expires_at
+  expires_at,
+  language_id
 ) VALUES (
   $1, $2,
   $3, $4,
   $5, $6,
   $7, $8,
-  $9
+  $9, $10
 )
 RETURNING id, created_at, expires_at
 `
@@ -40,6 +41,7 @@ type CreateNoteParams struct {
 	EncryptedKey      []byte
 	EncryptedKeyNonce []byte
 	ExpiresAt         pgtype.Timestamptz
+	LanguageID        pgtype.Text
 }
 
 type CreateNoteRow struct {
@@ -59,6 +61,7 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (CreateN
 		arg.EncryptedKey,
 		arg.EncryptedKeyNonce,
 		arg.ExpiresAt,
+		arg.LanguageID,
 	)
 	var i CreateNoteRow
 	err := row.Scan(&i.ID, &i.CreatedAt, &i.ExpiresAt)
@@ -107,7 +110,8 @@ SELECT
   title_ciphertext, title_nonce,
   body_ciphertext, body_nonce,
   encrypted_key, encrypted_key_nonce,
-  created_at, expires_at
+  created_at, expires_at,
+  language_id
 FROM notes
 WHERE id = $1
   AND expires_at > now()
@@ -128,6 +132,7 @@ func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (Note, error) {
 		&i.EncryptedKeyNonce,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.LanguageID,
 	)
 	return i, err
 }
@@ -151,6 +156,7 @@ SELECT
   n.encrypted_key, n.encrypted_key_nonce,
   n.created_at,
   n.expires_at,
+  n.language_id,
   coalesce(a.attachment_count, 0)::bigint as attachment_count
 FROM notes n
 LEFT JOIN (
@@ -172,6 +178,7 @@ type ListNotesByUserIDRow struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         pgtype.Timestamptz
 	ExpiresAt         pgtype.Timestamptz
+	LanguageID        pgtype.Text
 	AttachmentCount   int64
 }
 
@@ -193,6 +200,7 @@ func (q *Queries) ListNotesByUserID(ctx context.Context, userID uuid.UUID) ([]Li
 			&i.EncryptedKeyNonce,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.LanguageID,
 			&i.AttachmentCount,
 		); err != nil {
 			return nil, err
@@ -213,6 +221,7 @@ SELECT
   n.encrypted_key, n.encrypted_key_nonce,
   n.created_at,
   n.expires_at,
+  n.language_id,
   coalesce(a.attachment_count, 0)::bigint as attachment_count
 FROM notes n
 LEFT JOIN (
@@ -242,6 +251,7 @@ type ListNotesByUserIDPaginatedRow struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         pgtype.Timestamptz
 	ExpiresAt         pgtype.Timestamptz
+	LanguageID        pgtype.Text
 	AttachmentCount   int64
 }
 
@@ -263,6 +273,7 @@ func (q *Queries) ListNotesByUserIDPaginated(ctx context.Context, arg ListNotesB
 			&i.EncryptedKeyNonce,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.LanguageID,
 			&i.AttachmentCount,
 		); err != nil {
 			return nil, err

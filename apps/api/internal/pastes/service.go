@@ -48,6 +48,7 @@ type Note struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         time.Time
 	ExpiresAt         time.Time
+	LanguageID        string
 }
 
 type NoteMeta struct {
@@ -60,6 +61,7 @@ type NoteMeta struct {
 	CreatedAt         time.Time
 	ExpiresAt         time.Time
 	AttachmentCount   int64
+	LanguageID        string
 }
 
 type CreateResult struct {
@@ -76,10 +78,15 @@ func (s *Service) Create(
 	bodyCiphertext, bodyNonce,
 	encryptedKey, encryptedKeyNonce []byte,
 	expiration string,
+	languageID string,
 ) (*CreateResult, error) {
 	expiresAt, err := expiresAtFromString(time.Now(), expiration)
 	if err != nil {
 		return nil, err
+	}
+
+	if languageID == "" {
+		languageID = "plaintext"
 	}
 
 	row, err := s.queries.CreateNote(ctx, sqlc.CreateNoteParams{
@@ -92,6 +99,7 @@ func (s *Service) Create(
 		EncryptedKey:      encryptedKey,
 		EncryptedKeyNonce: encryptedKeyNonce,
 		ExpiresAt:         pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		LanguageID:        pgtype.Text{String: languageID, Valid: true},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create note: %w", err)
@@ -171,6 +179,11 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, er
 		})
 	}
 
+	langID := "plaintext"
+	if row.LanguageID.Valid {
+		langID = row.LanguageID.String
+	}
+
 	return &GetByIDResult{
 		Note: &Note{
 			ID:                row.ID,
@@ -184,6 +197,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, er
 			EncryptedKeyNonce: row.EncryptedKeyNonce,
 			CreatedAt:         row.CreatedAt.Time,
 			ExpiresAt:         row.ExpiresAt.Time,
+			LanguageID:        langID,
 		},
 		Attachments: attachments,
 	}, nil
@@ -197,6 +211,10 @@ func (s *Service) ListByUser(ctx context.Context, userID uuid.UUID) ([]NoteMeta,
 
 	out := make([]NoteMeta, 0, len(rows))
 	for _, r := range rows {
+		langID := "plaintext"
+		if r.LanguageID.Valid {
+			langID = r.LanguageID.String
+		}
 		out = append(out, NoteMeta{
 			ID:                r.ID,
 			BurnAfterRead:     r.BurnAfterRead,
@@ -207,6 +225,7 @@ func (s *Service) ListByUser(ctx context.Context, userID uuid.UUID) ([]NoteMeta,
 			CreatedAt:         r.CreatedAt.Time,
 			ExpiresAt:         r.ExpiresAt.Time,
 			AttachmentCount:   r.AttachmentCount,
+			LanguageID:        langID,
 		})
 	}
 	return out, nil
@@ -252,6 +271,10 @@ func (s *Service) ListByUserPaginated(
 
 	out := make([]NoteMeta, 0, len(rows))
 	for _, r := range rows {
+		langID := "plaintext"
+		if r.LanguageID.Valid {
+			langID = r.LanguageID.String
+		}
 		out = append(out, NoteMeta{
 			ID:                r.ID,
 			BurnAfterRead:     r.BurnAfterRead,
@@ -262,6 +285,7 @@ func (s *Service) ListByUserPaginated(
 			CreatedAt:         r.CreatedAt.Time,
 			ExpiresAt:         r.ExpiresAt.Time,
 			AttachmentCount:   r.AttachmentCount,
+			LanguageID:        langID,
 		})
 	}
 
