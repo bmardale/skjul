@@ -14,7 +14,12 @@ type Config struct {
 	Logger      LoggerConfig      `mapstructure:"logger"`
 	S3          S3Config          `mapstructure:"s3"`
 	Invitations InvitationsConfig `mapstructure:"invitations"`
+	Admin       AdminConfig       `mapstructure:"admin"`
 	Cleanup     CleanupConfig     `mapstructure:"cleanup"`
+}
+
+type AdminConfig struct {
+	Admins []string `mapstructure:"admins"` // usernames
 }
 
 type CleanupConfig struct {

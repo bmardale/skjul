@@ -20,6 +20,9 @@ invitations:
     require_invite_code: false
     default_quota: 5
 
+admin:
+    admins: []
+
 s3:
     bucket: "skjul-attachments"
     region: "us-east-1"

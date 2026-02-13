@@ -3,18 +3,31 @@ import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { useAppConfig } from "@/lib/app-config";
 import { AccountCard } from "@/components/dashboard/account-card";
-import { SessionsCard } from "@/components/dashboard/sessions-card";
-import { PastesCard } from "@/components/dashboard/pastes-card";
+import { AdminCard } from "@/components/dashboard/admin-card";
 import { InvitationsCard } from "@/components/dashboard/invitations-card";
+import { PastesCard } from "@/components/dashboard/pastes-card";
+import { SessionsCard } from "@/components/dashboard/sessions-card";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 
-const ALL_TABS = ["account", "sessions", "invitations", "pastes"] as const;
+const ALL_TABS = [
+  "account",
+  "sessions",
+  "invitations",
+  "pastes",
+  "admin",
+] as const;
 type Tab = (typeof ALL_TABS)[number];
 
-function getTabOptions(requireInviteCode: boolean): Tab[] {
+function getTabOptions(
+  requireInviteCode: boolean,
+  isAdmin: boolean,
+): Tab[] {
   const base: Tab[] = ["account", "sessions", "pastes"];
   if (requireInviteCode) {
-    return ["account", "sessions", "invitations", "pastes"];
+    base.splice(2, 0, "invitations");
+  }
+  if (isAdmin) {
+    base.push("admin");
   }
   return base;
 }
@@ -57,7 +70,12 @@ function DashboardContent() {
   const navigate = useNavigate({ from: Route.fullPath });
   const { tab } = Route.useSearch();
 
-  const tabOptions = getTabOptions(config?.require_invite_code ?? false);
+  if (!user) return null;
+
+  const tabOptions = getTabOptions(
+    config?.require_invite_code ?? false,
+    user.is_admin ?? false,
+  );
   const effectiveTab = tabOptions.includes(tab) ? tab : ("account" as Tab);
 
   useEffect(() => {
@@ -65,8 +83,6 @@ function DashboardContent() {
       navigate({ search: { tab: effectiveTab } });
     }
   }, [effectiveTab, tab, navigate]);
-
-  if (!user) return null;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
@@ -140,6 +156,14 @@ function DashboardContent() {
         hidden={effectiveTab !== "pastes"}
       >
         <PastesCard isActive={effectiveTab === "pastes"} />
+      </section>
+      <section
+        role="tabpanel"
+        id="dashboard-panel-admin"
+        aria-labelledby="dashboard-tab-admin"
+        hidden={effectiveTab !== "admin"}
+      >
+        <AdminCard isActive={effectiveTab === "admin"} />
       </section>
     </div>
   );

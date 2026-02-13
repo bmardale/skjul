@@ -9,9 +9,10 @@ import (
 )
 
 type RegisterRoutesOpts struct {
-	DB        *pgxpool.Pool
-	Logger    *slog.Logger
-	InvSvc    InvitationsService
+	DB              *pgxpool.Pool
+	Logger          *slog.Logger
+	InvSvc          InvitationsService
+	AdminUsernames  []string
 }
 
 func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) *Service {
@@ -23,9 +24,9 @@ func RegisterRoutesWithOpts(r *gin.RouterGroup, opts RegisterRoutesOpts) *Servic
 	svc := NewService(queries, opts.DB)
 	var handler *Handler
 	if opts.InvSvc != nil && opts.DB != nil {
-		handler = NewHandlerWithInvitations(svc, opts.InvSvc, opts.DB, opts.Logger)
+		handler = NewHandlerWithInvitations(svc, opts.InvSvc, opts.DB, opts.Logger, opts.AdminUsernames)
 	} else {
-		handler = NewHandler(svc, opts.Logger)
+		handler = NewHandler(svc, opts.Logger, opts.AdminUsernames)
 	}
 
 	r.POST("/auth/register", handler.Register)

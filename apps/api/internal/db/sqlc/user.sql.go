@@ -94,6 +94,29 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 	return i, err
 }
 
+const getUserBasic = `-- name: GetUserBasic :one
+SELECT id, username, invite_quota, created_at FROM users WHERE id = $1
+`
+
+type GetUserBasicRow struct {
+	ID          uuid.UUID
+	Username    string
+	InviteQuota int32
+	CreatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserBasic(ctx context.Context, id uuid.UUID) (GetUserBasicRow, error) {
+	row := q.db.QueryRow(ctx, getUserBasic, id)
+	var i GetUserBasicRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.InviteQuota,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserByUsername = `-- name: GetUserByUsername :one
 SELECT id, username, auth_hash FROM users WHERE username = $1
 `
@@ -120,4 +143,72 @@ func (q *Queries) GetUserInviteQuota(ctx context.Context, id uuid.UUID) (int32, 
 	var invite_quota int32
 	err := row.Scan(&invite_quota)
 	return invite_quota, err
+}
+
+const getUserStats = `-- name: GetUserStats :one
+SELECT
+  (SELECT count(*)::bigint FROM notes n1 WHERE n1.user_id = $1 AND n1.expires_at > now()) AS paste_count,
+  (SELECT coalesce(sum(a.encrypted_size), 0)::bigint FROM attachments a JOIN notes n2 ON a.note_id = n2.id WHERE n2.user_id = $1 AND n2.expires_at > now()) AS total_attachment_size
+`
+
+type GetUserStatsRow struct {
+	PasteCount          int64
+	TotalAttachmentSize int64
+}
+
+func (q *Queries) GetUserStats(ctx context.Context, userID uuid.UUID) (GetUserStatsRow, error) {
+	row := q.db.QueryRow(ctx, getUserStats, userID)
+	var i GetUserStatsRow
+	err := row.Scan(&i.PasteCount, &i.TotalAttachmentSize)
+	return i, err
+}
+
+const listAllUsers = `-- name: ListAllUsers :many
+SELECT id, username, invite_quota, created_at FROM users ORDER BY created_at DESC
+`
+
+type ListAllUsersRow struct {
+	ID          uuid.UUID
+	Username    string
+	InviteQuota int32
+	CreatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) ListAllUsers(ctx context.Context) ([]ListAllUsersRow, error) {
+	rows, err := q.db.Query(ctx, listAllUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllUsersRow
+	for rows.Next() {
+		var i ListAllUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.InviteQuota,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUserInviteQuota = `-- name: UpdateUserInviteQuota :exec
+UPDATE users SET invite_quota = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateUserInviteQuotaParams struct {
+	ID          uuid.UUID
+	InviteQuota int32
+}
+
+func (q *Queries) UpdateUserInviteQuota(ctx context.Context, arg UpdateUserInviteQuotaParams) error {
+	_, err := q.db.Exec(ctx, updateUserInviteQuota, arg.ID, arg.InviteQuota)
+	return err
 }

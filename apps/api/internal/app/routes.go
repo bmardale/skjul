@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 
+	"github.com/bmardale/skjul/internal/admin"
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/bmardale/skjul/internal/invitations"
@@ -21,12 +22,14 @@ func (a *App) setupRoutes() {
 	invSvc := invitations.NewService(queries, a.db, a.config.Invitations)
 
 	authSvc := auth.RegisterRoutesWithOpts(v1, auth.RegisterRoutesOpts{
-		DB:     a.db,
-		Logger: a.logger,
-		InvSvc: invSvc,
+		DB:             a.db,
+		Logger:         a.logger,
+		InvSvc:         invSvc,
+		AdminUsernames: a.config.Admin.Admins,
 	})
 	pastes.RegisterRoutes(v1, a.db, a.logger, authSvc, a.s3Client)
 	invitations.RegisterRoutes(v1, a.db, authSvc, a.config.Invitations, a.logger)
+	admin.RegisterRoutes(v1, a.db, authSvc, a.config.Admin.Admins, a.logger)
 }
 
 func (a *App) healthCheck(c *gin.Context) {

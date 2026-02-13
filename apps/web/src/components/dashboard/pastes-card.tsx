@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, Attachment01Icon, ArrowDown01Icon, RefreshIcon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, Attachment01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { api, type PasteListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { decryptPasteTitle } from "@/lib/crypto";

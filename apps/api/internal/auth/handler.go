@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,18 +28,19 @@ type InvitationsService interface {
 }
 
 type Handler struct {
-	service *Service
-	invSvc  InvitationsService
-	db      *pgxpool.Pool
-	logger  *slog.Logger
+	service        *Service
+	invSvc         InvitationsService
+	db             *pgxpool.Pool
+	logger         *slog.Logger
+	adminUsernames []string
 }
 
-func NewHandler(service *Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service *Service, logger *slog.Logger, adminUsernames []string) *Handler {
+	return &Handler{service: service, logger: logger, adminUsernames: adminUsernames}
 }
 
-func NewHandlerWithInvitations(service *Service, invSvc InvitationsService, db *pgxpool.Pool, logger *slog.Logger) *Handler {
-	return &Handler{service: service, invSvc: invSvc, db: db, logger: logger}
+func NewHandlerWithInvitations(service *Service, invSvc InvitationsService, db *pgxpool.Pool, logger *slog.Logger, adminUsernames []string) *Handler {
+	return &Handler{service: service, invSvc: invSvc, db: db, logger: logger, adminUsernames: adminUsernames}
 }
 
 type registerRequest struct {
@@ -79,6 +81,7 @@ type meResponse struct {
 	EncryptedVaultKey string `json:"encrypted_vault_key"`
 	VaultKeyNonce     string `json:"vault_key_nonce"`
 	CreatedAt         string `json:"created_at"`
+	IsAdmin           bool   `json:"is_admin"`
 }
 
 type sessionResponse struct {
@@ -316,6 +319,7 @@ func (h *Handler) Me(c *gin.Context) {
 		EncryptedVaultKey: hex.EncodeToString(user.EncryptedVaultKey),
 		VaultKeyNonce:     hex.EncodeToString(user.VaultKeyNonce),
 		CreatedAt:         user.CreatedAt.Format(time.RFC3339),
+		IsAdmin:           slices.Contains(h.adminUsernames, user.Username),
 	})
 }
 

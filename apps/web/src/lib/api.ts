@@ -55,6 +55,23 @@ export interface MeResponse {
   salt: string;
   encrypted_vault_key: string;
   vault_key_nonce: string;
+  is_admin: boolean;
+}
+
+export interface AdminUserListItem {
+  id: string;
+  username: string;
+  invite_quota: number;
+  created_at: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  username: string;
+  invite_quota: number;
+  created_at: string;
+  paste_count: number;
+  total_attachment_size: number;
 }
 
 export interface SessionResponse {
@@ -250,5 +267,23 @@ export const api = {
 
   deletePaste(id: string) {
     return client.delete(`api/v1/pastes/${id}`).json<void>();
+  },
+
+  adminListUsers() {
+    return client.get("api/v1/admin/users").json<AdminUserListItem[]>();
+  },
+
+  adminGetUser(id: string) {
+    return client.get(`api/v1/admin/users/${id}`).json<AdminUserDetail>();
+  },
+
+  adminDeleteUser(id: string) {
+    return client.delete(`api/v1/admin/users/${id}`).then(() => undefined);
+  },
+
+  adminUpdateInviteQuota(id: string, quota: number) {
+    return client
+      .patch(`api/v1/admin/users/${id}/invite-quota`, { json: { quota } })
+      .then(() => undefined);
   },
 } as const;
