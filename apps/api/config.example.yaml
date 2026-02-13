@@ -15,3 +15,12 @@ http:
 logger:
     level: "info"
     format: "json"
+
+s3:
+    bucket: "skjul-attachments"
+    region: "us-east-1"
+    endpoint: ""
+    access_key_id: ""
+    secret_access_key: ""
+    presign_expiry: 15m
+    cdn_base_url: "https://cdn.example.com"

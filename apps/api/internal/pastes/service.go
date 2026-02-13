@@ -2,29 +2,38 @@ package pastes
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/bmardale/skjul/internal/db/sqlc"
+	"github.com/bmardale/skjul/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const maxAttachmentsPerPaste = 5
+
 var (
-	ErrNotFound          = errors.New("paste not found")
-	ErrInvalidExpiration = errors.New("invalid expiration value")
+	ErrNotFound            = errors.New("paste not found")
+	ErrInvalidExpiration   = errors.New("invalid expiration value")
+	ErrForbidden           = errors.New("forbidden")
+	ErrAttachmentLimit     = errors.New("attachment limit exceeded")
+	ErrAttachmentSizeLimit = errors.New("attachment size exceeds 10MB limit")
 )
 
 type Service struct {
-	queries *sqlc.Queries
-	db      *pgxpool.Pool
+	queries   *sqlc.Queries
+	db        *pgxpool.Pool
+	s3Client  *storage.S3Client
 }
 
-func NewService(queries *sqlc.Queries, db *pgxpool.Pool) *Service {
-	return &Service{queries: queries, db: db}
+func NewService(queries *sqlc.Queries, db *pgxpool.Pool, s3Client *storage.S3Client) *Service {
+	return &Service{queries: queries, db: db, s3Client: s3Client}
 }
 
 type Note struct {
@@ -50,6 +59,7 @@ type NoteMeta struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         time.Time
 	ExpiresAt         time.Time
+	AttachmentCount   int64
 }
 
 type CreateResult struct {
@@ -94,7 +104,12 @@ func (s *Service) Create(
 	}, nil
 }
 
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*Note, error) {
+type GetByIDResult struct {
+	Note        *Note
+	Attachments []AttachmentWithURL
+}
+
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -111,6 +126,23 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*Note, error) {
 		return nil, fmt.Errorf("get note: %w", err)
 	}
 
+	attachmentRows, err := qtx.ListAttachmentsByNoteID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("list attachments: %w", err)
+	}
+
+	if row.BurnAfterRead && s.s3Client != nil {
+		s3Keys := make([]string, 0, len(attachmentRows))
+		for _, r := range attachmentRows {
+			s3Keys = append(s3Keys, r.S3Key)
+		}
+		if len(s3Keys) > 0 {
+			if err := s.s3Client.DeleteObjects(ctx, s3Keys); err != nil {
+				return nil, fmt.Errorf("delete attachment objects: %w", err)
+			}
+		}
+	}
+
 	if row.BurnAfterRead {
 		if err := qtx.DeleteNoteByID(ctx, id); err != nil {
 			return nil, fmt.Errorf("burn note: %w", err)
@@ -121,18 +153,39 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*Note, error) {
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
-	return &Note{
-		ID:                row.ID,
-		UserID:            row.UserID,
-		BurnAfterRead:     row.BurnAfterRead,
-		TitleCiphertext:   row.TitleCiphertext,
-		TitleNonce:        row.TitleNonce,
-		BodyCiphertext:    row.BodyCiphertext,
-		BodyNonce:         row.BodyNonce,
-		EncryptedKey:      row.EncryptedKey,
-		EncryptedKeyNonce: row.EncryptedKeyNonce,
-		CreatedAt:         row.CreatedAt.Time,
-		ExpiresAt:         row.ExpiresAt.Time,
+	attachments := make([]AttachmentWithURL, 0, len(attachmentRows))
+	for _, r := range attachmentRows {
+		downloadURL := ""
+		if s.s3Client != nil {
+			downloadURL = s.s3Client.GetPublicURL(r.S3Key)
+		}
+		attachments = append(attachments, AttachmentWithURL{
+			ID:                 r.ID,
+			EncryptedSize:      r.EncryptedSize,
+			FilenameCiphertext: r.FilenameCiphertext,
+			FilenameNonce:      r.FilenameNonce,
+			ContentNonce:       r.ContentNonce,
+			MimeCiphertext:     r.MimeCiphertext,
+			MimeNonce:          r.MimeNonce,
+			DownloadURL:        downloadURL,
+		})
+	}
+
+	return &GetByIDResult{
+		Note: &Note{
+			ID:                row.ID,
+			UserID:            row.UserID,
+			BurnAfterRead:     row.BurnAfterRead,
+			TitleCiphertext:   row.TitleCiphertext,
+			TitleNonce:        row.TitleNonce,
+			BodyCiphertext:    row.BodyCiphertext,
+			BodyNonce:         row.BodyNonce,
+			EncryptedKey:      row.EncryptedKey,
+			EncryptedKeyNonce: row.EncryptedKeyNonce,
+			CreatedAt:         row.CreatedAt.Time,
+			ExpiresAt:         row.ExpiresAt.Time,
+		},
+		Attachments: attachments,
 	}, nil
 }
 
@@ -153,6 +206,7 @@ func (s *Service) ListByUser(ctx context.Context, userID uuid.UUID) ([]NoteMeta,
 			EncryptedKeyNonce: r.EncryptedKeyNonce,
 			CreatedAt:         r.CreatedAt.Time,
 			ExpiresAt:         r.ExpiresAt.Time,
+			AttachmentCount:   r.AttachmentCount,
 		})
 	}
 	return out, nil
@@ -163,6 +217,107 @@ func (s *Service) DeleteByID(ctx context.Context, userID, noteID uuid.UUID) erro
 		ID:     noteID,
 		UserID: userID,
 	})
+}
+
+// CleanupExpiredNotes deletes S3 objects for expired notes' attachments, then deletes expired notes.
+func (s *Service) CleanupExpiredNotes(ctx context.Context) error {
+	if s.s3Client != nil {
+		s3Keys, err := s.queries.GetAttachmentS3KeysForExpiredNotes(ctx)
+		if err != nil {
+			return fmt.Errorf("get expired attachment keys: %w", err)
+		}
+		if len(s3Keys) > 0 {
+			if err := s.s3Client.DeleteObjects(ctx, s3Keys); err != nil {
+				return fmt.Errorf("delete expired attachment objects: %w", err)
+			}
+		}
+	}
+	return s.queries.DeleteExpiredNotes(ctx)
+}
+
+type CreateAttachmentResult struct {
+	ID        uuid.UUID
+	UploadURL string
+}
+
+func (s *Service) CreateAttachment(
+	ctx context.Context,
+	userID uuid.UUID,
+	noteID uuid.UUID,
+	encryptedSize int64,
+	filenameCiphertext, filenameNonce, contentNonce []byte,
+	mimeCiphertext, mimeNonce []byte,
+) (*CreateAttachmentResult, error) {
+	if s.s3Client == nil {
+		return nil, errors.New("attachments not configured")
+	}
+
+	noteOwnerID, err := s.queries.GetNoteUserID(ctx, noteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get note: %w", err)
+	}
+	if noteOwnerID != userID {
+		return nil, ErrForbidden
+	}
+
+	count, err := s.queries.CountAttachmentsByNoteID(ctx, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("count attachments: %w", err)
+	}
+	if count >= maxAttachmentsPerPaste {
+		return nil, ErrAttachmentLimit
+	}
+
+	const maxSize = 10 * 1024 * 1024 // 10MB
+	if encryptedSize <= 0 || encryptedSize > maxSize {
+		return nil, ErrAttachmentSizeLimit
+	}
+
+	randomBytes := make([]byte, 32)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return nil, fmt.Errorf("generate s3 key: %w", err)
+	}
+	s3Key := fmt.Sprintf("a/%s", hex.EncodeToString(randomBytes))
+
+	attachmentID := uuid.Must(uuid.NewV7())
+	row, err := s.queries.CreateAttachment(ctx, sqlc.CreateAttachmentParams{
+		ID:                 attachmentID,
+		NoteID:             noteID,
+		S3Key:              s3Key,
+		EncryptedSize:      encryptedSize,
+		FilenameCiphertext: filenameCiphertext,
+		FilenameNonce:      filenameNonce,
+		ContentNonce:       contentNonce,
+		MimeCiphertext:     mimeCiphertext,
+		MimeNonce:          mimeNonce,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create attachment: %w", err)
+	}
+
+	uploadURL, err := s.s3Client.GenerateUploadURL(ctx, s3Key, encryptedSize)
+	if err != nil {
+		return nil, fmt.Errorf("generate upload url: %w", err)
+	}
+
+	return &CreateAttachmentResult{
+		ID:        row.ID,
+		UploadURL: uploadURL,
+	}, nil
+}
+
+type AttachmentWithURL struct {
+	ID                 uuid.UUID
+	EncryptedSize      int64
+	FilenameCiphertext []byte
+	FilenameNonce      []byte
+	ContentNonce       []byte
+	MimeCiphertext     []byte
+	MimeNonce          []byte
+	DownloadURL        string
 }
 
 func expiresAtFromString(now time.Time, exp string) (time.Time, error) {

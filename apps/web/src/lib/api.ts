@@ -63,6 +63,17 @@ export interface CreatePasteResponse {
   expires_at: string;
 }
 
+export interface PasteAttachment {
+  id: string;
+  encrypted_size: number;
+  filename_ciphertext: string;
+  filename_nonce: string;
+  content_nonce: string;
+  mime_ciphertext: string;
+  mime_nonce: string;
+  download_url: string;
+}
+
 export interface GetPasteResponse {
   id: string;
   burn_after_read: boolean;
@@ -74,6 +85,21 @@ export interface GetPasteResponse {
   encrypted_paste_key_nonce: string;
   created_at: string;
   expires_at: string;
+  attachments: PasteAttachment[];
+}
+
+export interface CreateAttachmentRequest {
+  encrypted_size: number;
+  filename_ciphertext: string;
+  filename_nonce: string;
+  content_nonce: string;
+  mime_ciphertext: string;
+  mime_nonce: string;
+}
+
+export interface CreateAttachmentResponse {
+  id: string;
+  upload_url: string;
 }
 
 export interface PasteListItem {
@@ -85,6 +111,7 @@ export interface PasteListItem {
   encrypted_paste_key_nonce: string;
   created_at: string;
   expires_at: string;
+  attachment_count: number;
 }
 
 export interface ApiError {
@@ -155,8 +182,30 @@ export const api = {
     return client.post("api/v1/pastes", { json: data }).json<CreatePasteResponse>();
   },
 
+  createAttachment(pasteId: string, data: CreateAttachmentRequest) {
+    return client
+      .post(`api/v1/pastes/${pasteId}/attachments`, { json: data })
+      .json<CreateAttachmentResponse>();
+  },
+
   getPaste(id: string) {
     return client.get(`api/v1/pastes/${id}`).json<GetPasteResponse>();
+  },
+
+  async uploadToPresignedUrl(url: string, encryptedBytes: Uint8Array): Promise<void> {
+    const body = new Uint8Array(encryptedBytes.length);
+    body.set(encryptedBytes);
+    const res = await fetch(url, {
+      method: "PUT",
+      body,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(encryptedBytes.length),
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+    }
   },
 
   listPastes() {

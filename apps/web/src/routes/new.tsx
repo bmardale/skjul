@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
@@ -27,7 +27,14 @@ import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui
 import { Checkbox } from "@/components/ui/checkbox";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
-import { createPaste } from "@/lib/crypto";
+import {
+  createPaste,
+  encryptFile,
+  encryptFilename,
+} from "@/lib/crypto";
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_ATTACHMENTS = 5;
 import { PageSkeleton } from "../components/ui/page-skeleton";
 
 export const Route = createFileRoute("/new")({
@@ -79,10 +86,18 @@ interface CreatedPaste {
   body: string;
 }
 
+interface SelectedFile {
+  file: File;
+  error?: string;
+}
+
 function NewPasteForm() {
   const { vaultKey } = useAuth();
   const [created, setCreated] = useState<CreatedPaste | null>(null);
   const [copied, setCopied] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
     defaultValues: {
@@ -111,6 +126,35 @@ function NewPasteForm() {
         burn_after_reading: value.burn_after_reading,
       });
 
+      const validFiles = selectedFiles.filter((f) => !f.error);
+      for (let i = 0; i < validFiles.length; i++) {
+        setUploadProgress(`Uploading attachment ${i + 1} of ${validFiles.length}...`);
+        const { file } = validFiles[i];
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { ciphertext, nonce } = encryptFile(bytes, paste.pasteKey);
+        const { ciphertext: filenameCiphertext, nonce: filenameNonce } = encryptFilename(
+          file.name,
+          paste.pasteKey
+        );
+        const mimeType = file.type || "application/octet-stream";
+        const { ciphertext: mimeCiphertext, nonce: mimeNonce } = encryptFilename(
+          mimeType,
+          paste.pasteKey
+        );
+
+        const attachmentRes = await api.createAttachment(res.id, {
+          encrypted_size: ciphertext.length,
+          filename_ciphertext: bytesToHex(filenameCiphertext),
+          filename_nonce: bytesToHex(filenameNonce),
+          content_nonce: bytesToHex(nonce),
+          mime_ciphertext: bytesToHex(mimeCiphertext),
+          mime_nonce: bytesToHex(mimeNonce),
+        });
+
+        await api.uploadToPresignedUrl(attachmentRes.upload_url, ciphertext);
+      }
+      setUploadProgress(null);
+
       const shareUrl = `${window.location.origin}/pastes/${res.id}#key=${paste.pasteKeyBase64Url}`;
       setCreated({
         id: res.id,
@@ -120,6 +164,43 @@ function NewPasteForm() {
       });
     },
   });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    setSelectedFiles((prev) => {
+      const next = [...prev];
+      for (const file of files) {
+        if (next.length >= MAX_ATTACHMENTS) break;
+        const error =
+          file.size > MAX_FILE_SIZE
+            ? `File exceeds 10MB limit`
+            : next.some((f) => f.file.name === file.name)
+              ? "Duplicate filename"
+              : undefined;
+        next.push({ file, error });
+      }
+      return next;
+    });
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (fileInputRef.current && e.dataTransfer.files.length) {
+      const dt = new DataTransfer();
+      Array.from(e.dataTransfer.files).forEach((f) => dt.items.add(f));
+      fileInputRef.current.files = dt.files;
+      fileInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
   if (created) {
     return (
@@ -302,6 +383,56 @@ function NewPasteForm() {
               }}
             />
 
+            <div>
+              <FieldLabel>Attachments (max 5, 10MB each)</FieldLabel>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-2 flex min-h-20 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+              >
+                Drop files here or click to select
+              </div>
+              {selectedFiles.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {selectedFiles.map(({ file, error }, i) => (
+                    <li
+                      key={i}
+                      className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                    >
+                      <span className="truncate" title={file.name}>
+                        {file.name}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </span>
+                      {error && (
+                        <span className="shrink-0 text-destructive text-xs">
+                          {error}
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 shrink-0 p-0"
+                        onClick={() => removeFile(i)}
+                      >
+                        ×
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div className="flex gap-2 border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               <HugeiconsIcon
                 icon={Alert02Icon}
@@ -319,16 +450,20 @@ function NewPasteForm() {
 
             <form.Subscribe
               selector={(state) => [state.canSubmit, state.isSubmitting]}
-              children={([canSubmit, isSubmitting]) => (
-                <Button
-                  type="submit"
-                  disabled={!canSubmit}
-                  className="w-full"
-                  size="lg"
-                >
-                  {isSubmitting ? "Encrypting & uploading..." : "Create paste"}
-                </Button>
-              )}
+              children={([canSubmit, isSubmitting]) => {
+                const hasFileErrors = selectedFiles.some((f) => f.error);
+                return (
+                  <Button
+                    type="submit"
+                    disabled={!canSubmit || hasFileErrors || uploadProgress !== null}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {uploadProgress ??
+                      (isSubmitting ? "Encrypting & uploading..." : "Create paste")}
+                  </Button>
+                );
+              }}
             />
           </form>
         </CardContent>

@@ -9,6 +9,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Attachment struct {
+	ID                 uuid.UUID
+	NoteID             uuid.UUID
+	S3Key              string
+	EncryptedSize      int64
+	FilenameCiphertext []byte
+	FilenameNonce      []byte
+	ContentNonce       []byte
+	CreatedAt          pgtype.Timestamptz
+	MimeCiphertext     []byte
+	MimeNonce          []byte
+}
+
 type Note struct {
 	ID                uuid.UUID
 	UserID            uuid.UUID

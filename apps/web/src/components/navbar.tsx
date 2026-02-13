@@ -43,7 +43,7 @@ export function Navbar() {
               <Button
                 variant="outline"
                 size="sm"
-                render={<Link to="/dashboard" />}
+                render={<Link to="/dashboard" search={{ tab: "account" }} />}
               >
                 Dashboard
               </Button>

@@ -10,6 +10,7 @@ import (
 	"github.com/bmardale/skjul/internal/config"
 	"github.com/bmardale/skjul/internal/db/migrations"
 	"github.com/bmardale/skjul/internal/logger"
+	"github.com/bmardale/skjul/internal/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -37,7 +38,27 @@ func main() {
 	}
 	defer db.Close()
 
-	application := app.New(cfg, slog, db)
+	var s3Client *storage.S3Client
+	if cfg.S3.Bucket != "" && cfg.S3.Region != "" {
+		s3Client, err = storage.NewS3Client(storage.S3Config{
+			Bucket:          cfg.S3.Bucket,
+			Region:          cfg.S3.Region,
+			Endpoint:        cfg.S3.Endpoint,
+			AccessKeyID:     cfg.S3.AccessKeyID,
+			SecretAccessKey: cfg.S3.SecretAccessKey,
+			PresignExpiry:   cfg.S3.PresignExpiry,
+			CDNBaseURL:      cfg.S3.CDNBaseURL,
+		})
+		if err != nil {
+			slog.ErrorContext(context.Background(), "failed to init S3 client", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	application := app.New(cfg, slog, db, s3Client)
+	if err := application.CleanupExpiredNotes(context.Background()); err != nil {
+		slog.WarnContext(context.Background(), "expired notes cleanup failed", "error", err)
+	}
 	if err := application.Start(context.Background()); err != nil {
 		log.Fatalf("application err: %v", err)
 	}

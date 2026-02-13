@@ -14,20 +14,24 @@ import (
 	"time"
 
 	"github.com/bmardale/skjul/internal/config"
+	"github.com/bmardale/skjul/internal/db/sqlc"
+	"github.com/bmardale/skjul/internal/pastes"
+	"github.com/bmardale/skjul/internal/storage"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {
-	router *gin.Engine
-	server *http.Server
-	config *config.Config
-	logger *slog.Logger
-	db     *pgxpool.Pool
+	router   *gin.Engine
+	server   *http.Server
+	config   *config.Config
+	logger   *slog.Logger
+	db       *pgxpool.Pool
+	s3Client *storage.S3Client
 }
 
-func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool) *App {
+func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool, s3Client *storage.S3Client) *App {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(cors.New(cors.Config{
@@ -46,11 +50,12 @@ func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool) *App {
 	}
 
 	app := &App{
-		router: router,
-		server: httpSrv,
-		config: cfg,
-		logger: logger,
-		db:     db,
+		router:   router,
+		server:   httpSrv,
+		config:   cfg,
+		logger:   logger,
+		db:       db,
+		s3Client: s3Client,
 	}
 
 	app.setupRoutes()
@@ -91,4 +96,10 @@ func (a *App) Start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (a *App) CleanupExpiredNotes(ctx context.Context) error {
+	queries := sqlc.New(a.db)
+	svc := pastes.NewService(queries, a.db, a.s3Client)
+	return svc.CleanupExpiredNotes(ctx)
 }

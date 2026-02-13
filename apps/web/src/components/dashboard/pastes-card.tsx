@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, Attachment01Icon } from "@hugeicons/core-free-icons";
 import { api, type PasteListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { decryptPasteTitle } from "@/lib/crypto";
@@ -29,6 +29,7 @@ interface DecryptedPaste {
   createdAt: string;
   expiresAt: string;
   decryptError: boolean;
+  attachmentCount: number;
 }
 
 function decryptPasteListItem(
@@ -50,6 +51,7 @@ function decryptPasteListItem(
       createdAt: paste.created_at,
       expiresAt: paste.expires_at,
       decryptError: false,
+      attachmentCount: paste.attachment_count ?? 0,
     };
   } catch {
     return {
@@ -59,6 +61,7 @@ function decryptPasteListItem(
       createdAt: paste.created_at,
       expiresAt: paste.expires_at,
       decryptError: true,
+      attachmentCount: paste.attachment_count ?? 0,
     };
   }
 }
@@ -140,6 +143,12 @@ export function PastesCard({ isActive }: { isActive: boolean }) {
                       {paste.decryptError && (
                         <Badge variant="outline" className="text-muted-foreground">
                           encrypted
+                        </Badge>
+                      )}
+                      {paste.attachmentCount > 0 && (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          <HugeiconsIcon icon={Attachment01Icon} size={10} className="mr-1" />
+                          {paste.attachmentCount}
                         </Badge>
                       )}
                     </div>

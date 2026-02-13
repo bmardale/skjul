@@ -15,6 +15,9 @@ INSERT INTO notes (
 )
 RETURNING id, created_at, expires_at;
 
+-- name: GetNoteUserID :one
+SELECT user_id FROM notes WHERE id = $1 AND expires_at > now();
+
 -- name: GetNoteByID :one
 SELECT
   id, user_id, burn_after_read,
@@ -28,16 +31,22 @@ WHERE id = $1
 
 -- name: ListNotesByUserID :many
 SELECT
-  id,
-  burn_after_read,
-  title_ciphertext, title_nonce,
-  encrypted_key, encrypted_key_nonce,
-  created_at,
-  expires_at
-FROM notes
-WHERE user_id = $1
-  AND expires_at > now()
-ORDER BY created_at DESC;
+  n.id,
+  n.burn_after_read,
+  n.title_ciphertext, n.title_nonce,
+  n.encrypted_key, n.encrypted_key_nonce,
+  n.created_at,
+  n.expires_at,
+  coalesce(a.attachment_count, 0)::bigint as attachment_count
+FROM notes n
+LEFT JOIN (
+  SELECT note_id, count(*)::bigint as attachment_count
+  FROM attachments
+  GROUP BY note_id
+) a ON n.id = a.note_id
+WHERE n.user_id = $1
+  AND n.expires_at > now()
+ORDER BY n.created_at DESC;
 
 -- name: DeleteNoteByIDAndUserID :exec
 DELETE FROM notes

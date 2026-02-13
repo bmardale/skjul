@@ -12,6 +12,17 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	HTTP     HTTPConfig     `mapstructure:"http"`
 	Logger   LoggerConfig   `mapstructure:"logger"`
+	S3       S3Config       `mapstructure:"s3"`
+}
+
+type S3Config struct {
+	Bucket          string        `mapstructure:"bucket"`
+	Region          string        `mapstructure:"region"`
+	Endpoint        string        `mapstructure:"endpoint"`
+	AccessKeyID     string        `mapstructure:"access_key_id"`
+	SecretAccessKey string        `mapstructure:"secret_access_key"`
+	PresignExpiry   time.Duration `mapstructure:"presign_expiry"`
+	CDNBaseURL      string        `mapstructure:"cdn_base_url"` // e.g. "https://cdn.skjul.com"
 }
 
 type DatabaseConfig struct {
@@ -55,6 +66,8 @@ func Load() (*Config, error) {
 
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("logger.format", "json")
+
+	v.SetDefault("s3.presign_expiry", "15m")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()

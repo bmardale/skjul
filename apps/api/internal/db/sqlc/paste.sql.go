@@ -132,18 +132,35 @@ func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (Note, error) {
 	return i, err
 }
 
+const getNoteUserID = `-- name: GetNoteUserID :one
+SELECT user_id FROM notes WHERE id = $1 AND expires_at > now()
+`
+
+func (q *Queries) GetNoteUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getNoteUserID, id)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const listNotesByUserID = `-- name: ListNotesByUserID :many
 SELECT
-  id,
-  burn_after_read,
-  title_ciphertext, title_nonce,
-  encrypted_key, encrypted_key_nonce,
-  created_at,
-  expires_at
-FROM notes
-WHERE user_id = $1
-  AND expires_at > now()
-ORDER BY created_at DESC
+  n.id,
+  n.burn_after_read,
+  n.title_ciphertext, n.title_nonce,
+  n.encrypted_key, n.encrypted_key_nonce,
+  n.created_at,
+  n.expires_at,
+  coalesce(a.attachment_count, 0)::bigint as attachment_count
+FROM notes n
+LEFT JOIN (
+  SELECT note_id, count(*)::bigint as attachment_count
+  FROM attachments
+  GROUP BY note_id
+) a ON n.id = a.note_id
+WHERE n.user_id = $1
+  AND n.expires_at > now()
+ORDER BY n.created_at DESC
 `
 
 type ListNotesByUserIDRow struct {
@@ -155,6 +172,7 @@ type ListNotesByUserIDRow struct {
 	EncryptedKeyNonce []byte
 	CreatedAt         pgtype.Timestamptz
 	ExpiresAt         pgtype.Timestamptz
+	AttachmentCount   int64
 }
 
 func (q *Queries) ListNotesByUserID(ctx context.Context, userID uuid.UUID) ([]ListNotesByUserIDRow, error) {
@@ -175,6 +193,7 @@ func (q *Queries) ListNotesByUserID(ctx context.Context, userID uuid.UUID) ([]Li
 			&i.EncryptedKeyNonce,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.AttachmentCount,
 		); err != nil {
 			return nil, err
 		}

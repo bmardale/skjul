@@ -1,8 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
-import { api, getApiError, type GetPasteResponse } from "@/lib/api";
-import { decryptPaste, decryptPasteWithKey } from "@/lib/crypto";
+import { api, getApiError, type GetPasteResponse, type PasteAttachment } from "@/lib/api";
+import {
+  decryptPaste,
+  decryptPasteWithKey,
+  decryptFile,
+  decryptFilename,
+  getPasteKeyFromHash,
+  getPasteKeyFromVault,
+} from "@/lib/crypto";
+import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   Card,
   CardContent,
@@ -69,6 +77,219 @@ function ErrorState({ status }: { status: Exclude<Status, "loading" | "ready"> }
         </p>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
+    </div>
+  );
+}
+
+type ImageLoadState = "idle" | "loading" | "loaded" | "error";
+
+function AttachmentItem({
+  att,
+  pasteKey,
+  onDownload,
+  downloading,
+}: {
+  att: PasteAttachment;
+  pasteKey: Uint8Array;
+  onDownload: (att: PasteAttachment) => void;
+  downloading: boolean;
+}) {
+  const [imageState, setImageState] = useState<ImageLoadState>("idle");
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const containerRef = useRef<HTMLLIElement>(null);
+  const [inView, setInView] = useState(false);
+
+  const getMimeType = (): string | null => {
+    if (!att.mime_ciphertext || !att.mime_nonce || pasteKey.length === 0) return null;
+    try {
+      return decryptFilename(att.mime_ciphertext, att.mime_nonce, pasteKey);
+    } catch {
+      return null;
+    }
+  };
+
+  const getFilename = () => {
+    try {
+      return decryptFilename(
+        att.filename_ciphertext,
+        att.filename_nonce,
+        pasteKey
+      );
+    } catch {
+      return "encrypted file";
+    }
+  };
+
+  const mimeType = getMimeType();
+  const isImage = mimeType?.startsWith("image/") ?? false;
+
+  useEffect(() => {
+    if (!inView || !isImage || imageState !== "idle" || pasteKey.length === 0) return;
+    setImageState("loading");
+    fetch(att.download_url)
+      .then((res) => {
+        if (!res.ok) throw new Error("Fetch failed");
+        return res.arrayBuffer();
+      })
+      .then((buf) => {
+        const ciphertext = new Uint8Array(buf);
+        const plaintext = decryptFile(
+          ciphertext,
+          hexToBytes(att.content_nonce),
+          pasteKey
+        );
+        const copy = new Uint8Array(plaintext.length);
+        copy.set(plaintext);
+        const blob = new Blob([copy], { type: mimeType ?? undefined });
+        setObjectUrl(URL.createObjectURL(blob));
+        setImageState("loaded");
+      })
+      .catch(() => setImageState("error"));
+  }, [att, pasteKey, inView, isImage, imageState, mimeType]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isImage) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setInView(true);
+      },
+      { rootMargin: "100px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [isImage]);
+
+  useEffect(() => () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }, [objectUrl]);
+
+  const filename = getFilename();
+
+  return (
+    <li
+      ref={containerRef}
+      className="rounded-md border bg-muted/30 overflow-hidden"
+    >
+      {isImage && (
+        <div className="p-2 space-y-2">
+          {imageState === "idle" && (
+            <div className="aspect-video rounded bg-muted animate-pulse" />
+          )}
+          {imageState === "loading" && (
+            <div className="aspect-video rounded bg-muted animate-pulse flex items-center justify-center text-xs text-muted-foreground">
+              Loading…
+            </div>
+          )}
+          {imageState === "loaded" && objectUrl && (
+            <button
+              type="button"
+              className="block w-full max-w-sm rounded overflow-hidden hover:opacity-90 transition-opacity"
+              onClick={() => setLightboxOpen(true)}
+            >
+              <img
+                src={objectUrl}
+                alt={filename}
+                className="max-h-48 w-auto object-contain"
+              />
+            </button>
+          )}
+          {imageState === "error" && (
+            <div className="aspect-video rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
+              Failed to load preview
+            </div>
+          )}
+          {lightboxOpen && objectUrl && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+              onClick={() => setLightboxOpen(false)}
+            >
+              <img
+                src={objectUrl}
+                alt={filename}
+                className="max-w-full max-h-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 sm:flex-row flex-wrap">
+        <span className="truncate text-sm" title={filename}>
+          {filename}
+        </span>
+        <span className="shrink-0 text-muted-foreground text-xs">
+          {(att.encrypted_size / 1024).toFixed(1)} KB
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={downloading}
+          onClick={() => onDownload(att)}
+        >
+          {downloading ? "Downloading..." : "Download"}
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+function AttachmentList({
+  attachments,
+  pasteKey,
+}: {
+  attachments: PasteAttachment[];
+  pasteKey: Uint8Array;
+}) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const handleDownload = async (att: PasteAttachment) => {
+    if (pasteKey.length === 0) return;
+    setDownloading(att.id);
+    try {
+      const res = await fetch(att.download_url);
+      if (!res.ok) throw new Error("Download failed");
+      const ciphertext = new Uint8Array(await res.arrayBuffer());
+      const plaintext = decryptFile(
+        ciphertext,
+        hexToBytes(att.content_nonce),
+        pasteKey
+      );
+      const filename = decryptFilename(
+        att.filename_ciphertext,
+        att.filename_nonce,
+        pasteKey
+      );
+      const copy = new Uint8Array(plaintext.length);
+      copy.set(plaintext);
+      const blob = new Blob([copy]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">Attachments</p>
+      <ul className="space-y-2">
+        {attachments.map((att) => (
+          <AttachmentItem
+            key={att.id}
+            att={att}
+            pasteKey={pasteKey}
+            onDownload={handleDownload}
+            downloading={downloading === att.id}
+          />
+        ))}
+      </ul>
     </div>
   );
 }
@@ -319,10 +540,26 @@ function PasteContent() {
 
         <Separator />
 
-        <CardContent className="pt-4">
+        <CardContent className="pt-4 space-y-4">
           <pre className="whitespace-pre-wrap break-words font-mono text-sm">
             {decrypted!.body}
           </pre>
+          {(paste!.attachments?.length ?? 0) > 0 && (
+            <AttachmentList
+              attachments={paste!.attachments ?? []}
+              pasteKey={
+                hashKey
+                  ? getPasteKeyFromHash(hashKey)
+                  : vaultKey
+                    ? getPasteKeyFromVault(
+                        vaultKey,
+                        paste!.encrypted_paste_key_ciphertext,
+                        paste!.encrypted_paste_key_nonce
+                      )
+                    : new Uint8Array()
+              }
+            />
+          )}
         </CardContent>
       </Card>
     </div>

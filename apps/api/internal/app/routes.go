@@ -15,7 +15,7 @@ func (a *App) setupRoutes() {
 	v1.GET("/health", a.healthCheck)
 
 	authSvc := auth.RegisterRoutes(v1, a.db, a.logger)
-	pastes.RegisterRoutes(v1, a.db, a.logger, authSvc)
+	pastes.RegisterRoutes(v1, a.db, a.logger, authSvc, a.s3Client)
 }
 
 func (a *App) healthCheck(c *gin.Context) {
