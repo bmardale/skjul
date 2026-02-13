@@ -61,8 +61,8 @@ function VaultUnlockDialog({
       const { masterKey } = await deriveLoginKeys(password, user.salt);
       const vaultKey = await decryptVaultKey(
         masterKey,
-        user.encryptedVaultKey,
-        user.vaultKeyNonce,
+        user.encrypted_vault_key,
+        user.vault_key_nonce,
       );
       onUnlock(vaultKey);
     } catch {
@@ -156,7 +156,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   }, [fetchUser]);
 
-  const showUnlockDialog = user !== null && vaultKey === null && !isLoading;
+  const [suppressUnlock, setSuppressUnlock] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const onPasteRoute = window.location.pathname.startsWith("/pastes/");
+      const hash = window.location.hash;
+      const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+      const params = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
+      setSuppressUnlock(onPasteRoute && !!params.get("key"));
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    window.addEventListener("popstate", check);
+    return () => {
+      window.removeEventListener("hashchange", check);
+      window.removeEventListener("popstate", check);
+    };
+  }, []);
+
+  const showUnlockDialog = user !== null && vaultKey === null && !isLoading && !suppressUnlock;
 
   return (
     <AuthContext.Provider

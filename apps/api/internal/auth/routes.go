@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) {
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) *Service {
 	queries := sqlc.New(db)
 	svc := NewService(queries, db)
 	handler := NewHandler(svc, logger)
@@ -24,4 +24,6 @@ func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) {
 	protected.GET("/sessions", handler.ListSessions)
 	protected.DELETE("/sessions/:id", handler.DeleteSession)
 	protected.DELETE("/me", handler.DeleteAccount)
+
+	return svc
 }

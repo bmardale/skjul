@@ -9,6 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Note struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	BurnAfterRead     bool
+	TitleCiphertext   []byte
+	TitleNonce        []byte
+	BodyCiphertext    []byte
+	BodyNonce         []byte
+	EncryptedKey      []byte
+	EncryptedKeyNonce []byte
+	CreatedAt         pgtype.Timestamptz
+	ExpiresAt         pgtype.Timestamptz
+}
+
 type Session struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID

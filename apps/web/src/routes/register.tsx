@@ -55,10 +55,10 @@ function Register() {
         const registrationData = await generateRegistrationData(value.password);
         await api.register({
           username: value.username,
-          authKey: registrationData.authKey,
+          auth_key: registrationData.authKey,
           salt: registrationData.salt,
-          encryptedVaultKey: registrationData.encryptedVaultKey,
-          vaultKeyNonce: registrationData.vaultKeyNonce,
+          encrypted_vault_key: registrationData.encryptedVaultKey,
+          vault_key_nonce: registrationData.vaultKeyNonce,
         });
 
         const { masterKey } = await deriveLoginKeys(

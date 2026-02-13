@@ -57,7 +57,7 @@ function Login() {
         // 3. Authenticate with derived auth key (sets session cookie)
         await api.login({
           username: value.username,
-          authKey,
+          auth_key: authKey,
         });
 
         // 4. Fetch encrypted vault key from /me (now authenticated)
@@ -66,8 +66,8 @@ function Login() {
         // 5. Decrypt vault key with masterKey still in memory
         const vaultKey = await decryptVaultKey(
           masterKey,
-          me.encryptedVaultKey,
-          me.vaultKeyNonce,
+          me.encrypted_vault_key,
+          me.vault_key_nonce,
         );
 
         setVaultKey(vaultKey);

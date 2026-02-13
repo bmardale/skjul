@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +27,8 @@ import { Field, FieldLabel, FieldDescription, FieldError } from "@/components/ui
 import { Checkbox } from "@/components/ui/checkbox";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { createPaste } from "@/lib/crypto";
+import { PageSkeleton } from "../components/ui/page-skeleton";
 
 export const Route = createFileRoute("/new")({
   component: NewPaste,
@@ -57,12 +62,7 @@ function NewPaste() {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
-        <div className="h-4 w-32 bg-muted/50 animate-pulse" />
-        <div className="h-80 w-full border border-border bg-muted/30 animate-pulse" />
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   if (!user) {
@@ -72,7 +72,18 @@ function NewPaste() {
   return <NewPasteForm />;
 }
 
+interface CreatedPaste {
+  id: string;
+  shareUrl: string;
+  title: string;
+  body: string;
+}
+
 function NewPasteForm() {
+  const { vaultKey } = useAuth();
+  const [created, setCreated] = useState<CreatedPaste | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const form = useForm({
     defaultValues: {
       title: "",
@@ -84,10 +95,84 @@ function NewPasteForm() {
       onSubmit: newPasteSchema,
     },
     onSubmit: async ({ value }) => {
-      // TODO: encrypt + upload paste
-      console.log("new paste", value);
+      if (!vaultKey) {
+        throw new Error("Vault key not found");
+      }
+
+      const paste = await createPaste(value.title, value.body, vaultKey);
+      const res = await api.createPaste({
+        encrypted_title_ciphertext: bytesToHex(paste.encryptedTitleCiphertext),
+        encrypted_title_nonce: bytesToHex(paste.encryptedTitleNonce),
+        encrypted_body_ciphertext: bytesToHex(paste.encryptedBodyCiphertext),
+        encrypted_body_nonce: bytesToHex(paste.encryptedBodyNonce),
+        encrypted_paste_key_ciphertext: bytesToHex(paste.encryptedPasteKeyCiphertext),
+        encrypted_paste_key_nonce: bytesToHex(paste.encryptedPasteKeyNonce),
+        expiration: value.expiration,
+        burn_after_reading: value.burn_after_reading,
+      });
+
+      const shareUrl = `${window.location.origin}/pastes/${res.id}#key=${paste.pasteKeyBase64Url}`;
+      setCreated({
+        id: res.id,
+        shareUrl,
+        title: value.title,
+        body: value.body,
+      });
     },
   });
+
+  if (created) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
+            <span className="text-muted-foreground">$ </span>
+            paste created
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Share the link below. The decryption key is embedded in the URL
+            fragment.
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Share link</CardTitle>
+            <CardDescription>
+              Anyone with this link can decrypt and read the paste.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input readOnly value={created.shareUrl} className="font-mono text-xs" />
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => {
+                  navigator.clipboard.writeText(created.shareUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+              >
+                {copied ? "Copied!" : "Copy"}
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{created.title}</p>
+              <pre className="whitespace-pre-wrap break-words font-mono text-sm text-muted-foreground">
+                {created.body}
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
@@ -118,7 +203,6 @@ function NewPasteForm() {
             }}
             className="space-y-4"
           >
-            {/* ── Title + Expiration row ── */}
             <div className="flex flex-col gap-4 sm:flex-row">
               <form.Field
                 name="title"
@@ -171,7 +255,6 @@ function NewPasteForm() {
               />
             </div>
 
-            {/* ── Burn after reading ── */}
             <form.Field
               name="burn_after_reading"
               children={(field) => (
@@ -193,7 +276,6 @@ function NewPasteForm() {
               )}
             />
 
-            {/* ── Body ── */}
             <form.Field
               name="body"
               children={(field) => {
@@ -220,7 +302,6 @@ function NewPasteForm() {
               }}
             />
 
-            {/* ── E2EE notice ── */}
             <div className="flex gap-2 border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               <HugeiconsIcon
                 icon={Alert02Icon}

@@ -2,10 +2,10 @@ import ky, { type HTTPError } from "ky";
 
 export interface RegisterRequest {
   username: string;
-  authKey: string;
+  auth_key: string;
   salt: string;
-  encryptedVaultKey: string;
-  vaultKeyNonce: string;
+  encrypted_vault_key: string;
+  vault_key_nonce: string;
 }
 
 export interface RegisterResponse {
@@ -22,7 +22,7 @@ export interface LoginChallengeResponse {
 
 export interface LoginRequest {
   username: string;
-  authKey: string;
+  auth_key: string;
 }
 
 export interface LoginResponse {
@@ -35,8 +35,8 @@ export interface MeResponse {
   username: string;
   created_at: string;
   salt: string;
-  encryptedVaultKey: string;
-  vaultKeyNonce: string;
+  encrypted_vault_key: string;
+  vault_key_nonce: string;
 }
 
 export interface SessionResponse {
@@ -44,6 +44,47 @@ export interface SessionResponse {
   created_at: string;
   expires_at: string;
   current: boolean;
+}
+
+export interface CreatePasteRequest {
+  encrypted_title_ciphertext: string;
+  encrypted_title_nonce: string;
+  encrypted_body_ciphertext: string;
+  encrypted_body_nonce: string;
+  encrypted_paste_key_ciphertext: string;
+  encrypted_paste_key_nonce: string;
+  expiration: string;
+  burn_after_reading: boolean;
+}
+
+export interface CreatePasteResponse {
+  id: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface GetPasteResponse {
+  id: string;
+  burn_after_read: boolean;
+  title_ciphertext: string;
+  title_nonce: string;
+  body_ciphertext: string;
+  body_nonce: string;
+  encrypted_paste_key_ciphertext: string;
+  encrypted_paste_key_nonce: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface PasteListItem {
+  id: string;
+  burn_after_read: boolean;
+  title_ciphertext: string;
+  title_nonce: string;
+  encrypted_paste_key_ciphertext: string;
+  encrypted_paste_key_nonce: string;
+  created_at: string;
+  expires_at: string;
 }
 
 export interface ApiError {
@@ -108,5 +149,21 @@ export const api = {
 
   deleteAccount() {
     return client.delete("api/v1/me").json<void>();
+  },
+
+  createPaste(data: CreatePasteRequest) {
+    return client.post("api/v1/pastes", { json: data }).json<CreatePasteResponse>();
+  },
+
+  getPaste(id: string) {
+    return client.get(`api/v1/pastes/${id}`).json<GetPasteResponse>();
+  },
+
+  listPastes() {
+    return client.get("api/v1/pastes").json<PasteListItem[]>();
+  },
+
+  deletePaste(id: string) {
+    return client.delete(`api/v1/pastes/${id}`).json<void>();
   },
 } as const;

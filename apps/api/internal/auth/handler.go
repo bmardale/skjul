@@ -24,10 +24,10 @@ func NewHandler(service *Service, logger *slog.Logger) *Handler {
 
 type registerRequest struct {
 	Username          string `json:"username" binding:"required,min=3,max=128"`
-	AuthKey           string `json:"authKey" binding:"required"`
+	AuthKey           string `json:"auth_key" binding:"required"`
 	Salt              string `json:"salt" binding:"required"`
-	EncryptedVaultKey string `json:"encryptedVaultKey" binding:"required"`
-	VaultKeyNonce     string `json:"vaultKeyNonce" binding:"required"`
+	EncryptedVaultKey string `json:"encrypted_vault_key" binding:"required"`
+	VaultKeyNonce     string `json:"vault_key_nonce" binding:"required"`
 }
 
 type loginChallengeRequest struct {
@@ -40,7 +40,7 @@ type loginChallengeResponse struct {
 
 type loginRequest struct {
 	Username string `json:"username" binding:"required,min=3,max=128"`
-	AuthKey  string `json:"authKey" binding:"required"`
+	AuthKey  string `json:"auth_key" binding:"required"`
 }
 
 type registerResponse struct {
@@ -56,8 +56,8 @@ type meResponse struct {
 	UserID            string `json:"user_id"`
 	Username          string `json:"username"`
 	Salt              string `json:"salt"`
-	EncryptedVaultKey string `json:"encryptedVaultKey"`
-	VaultKeyNonce     string `json:"vaultKeyNonce"`
+	EncryptedVaultKey string `json:"encrypted_vault_key"`
+	VaultKeyNonce     string `json:"vault_key_nonce"`
 	CreatedAt         string `json:"created_at"`
 }
 
@@ -207,14 +207,7 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 func (h *Handler) Me(c *gin.Context) {
-	userID, ok := GetUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{
-			Code:    "UNAUTHORIZED",
-			Message: "missing or invalid session",
-		})
-		return
-	}
+	userID, _ := GetUserID(c)
 
 	user, err := h.service.GetUser(c.Request.Context(), userID)
 	if err != nil {
@@ -245,14 +238,7 @@ func (h *Handler) Logout(c *gin.Context) {
 }
 
 func (h *Handler) ListSessions(c *gin.Context) {
-	userID, ok := GetUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{
-			Code:    "UNAUTHORIZED",
-			Message: "missing or invalid session",
-		})
-		return
-	}
+	userID, _ := GetUserID(c)
 	sessionID, _ := GetSessionID(c)
 
 	sessions, err := h.service.ListSessions(c.Request.Context(), userID, sessionID)
@@ -278,14 +264,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 }
 
 func (h *Handler) DeleteSession(c *gin.Context) {
-	userID, ok := GetUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{
-			Code:    "UNAUTHORIZED",
-			Message: "missing or invalid session",
-		})
-		return
-	}
+	userID, _ := GetUserID(c)
 	sessionID, _ := GetSessionID(c)
 
 	targetID, err := uuid.Parse(c.Param("id"))
@@ -313,14 +292,7 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 }
 
 func (h *Handler) DeleteAccount(c *gin.Context) {
-	userID, ok := GetUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, errorResponse{
-			Code:    "UNAUTHORIZED",
-			Message: "missing or invalid session",
-		})
-		return
-	}
+	userID, _ := GetUserID(c)
 
 	if err := h.service.DeleteAccount(c.Request.Context(), userID); err != nil {
 		h.logger.Error("delete account failed", "error", err)
