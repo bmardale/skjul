@@ -84,6 +84,15 @@ type listPastesResponse struct {
 	NextCursor string          `json:"next_cursor,omitempty"`
 }
 
+type getPasteMetaResponse struct {
+	ID              string `json:"id"`
+	BurnAfterRead   bool   `json:"burn_after_read"`
+	CreatedAt       string `json:"created_at"`
+	ExpiresAt       string `json:"expires_at"`
+	LanguageID      string `json:"language_id"`
+	AttachmentCount int64  `json:"attachment_count"`
+}
+
 type createAttachmentRequest struct {
 	EncryptedSize      int64  `json:"encrypted_size" binding:"required"`
 	FilenameCiphertext string `json:"filename_ciphertext" binding:"required"`
@@ -166,6 +175,83 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 	})
 }
 
+func (h *Handler) GetPasteMeta(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierr.BadRequest("invalid paste id").Respond(c)
+		return
+	}
+
+	result, err := h.service.GetMetaByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			apierr.NotFound("paste not found or expired").Respond(c)
+			return
+		}
+		h.logger.Error("get paste meta failed", "error", err)
+		apierr.InternalError("failed to fetch paste meta").Respond(c)
+		return
+	}
+
+	c.JSON(http.StatusOK, getPasteMetaResponse{
+		ID:              result.ID.String(),
+		BurnAfterRead:   result.BurnAfterRead,
+		CreatedAt:       result.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:       result.ExpiresAt.Format(time.RFC3339),
+		LanguageID:      result.LanguageID,
+		AttachmentCount: result.AttachmentCount,
+	})
+}
+
+func (h *Handler) ConsumePaste(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierr.BadRequest("invalid paste id").Respond(c)
+		return
+	}
+
+	result, err := h.service.ConsumeByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			apierr.NotFound("paste not found or expired").Respond(c)
+			return
+		}
+		h.logger.Error("consume paste failed", "error", err)
+		apierr.InternalError("failed to consume paste").Respond(c)
+		return
+	}
+
+	note := result.Note
+	attResp := make([]attachmentResponse, 0, len(result.Attachments))
+	for _, a := range result.Attachments {
+		attResp = append(attResp, attachmentResponse{
+			ID:                 a.ID.String(),
+			EncryptedSize:      a.EncryptedSize,
+			FilenameCiphertext: hex.EncodeToString(a.FilenameCiphertext),
+			FilenameNonce:      hex.EncodeToString(a.FilenameNonce),
+			ContentNonce:       hex.EncodeToString(a.ContentNonce),
+			MimeCiphertext:     hex.EncodeToString(a.MimeCiphertext),
+			MimeNonce:          hex.EncodeToString(a.MimeNonce),
+			DownloadURL:        a.DownloadURL,
+		})
+	}
+
+	c.JSON(http.StatusOK, getPasteResponse{
+		ID:                          note.ID.String(),
+		BurnAfterRead:               note.BurnAfterRead,
+		TitleCiphertext:             hex.EncodeToString(note.TitleCiphertext),
+		TitleNonce:                  hex.EncodeToString(note.TitleNonce),
+		BodyCiphertext:              hex.EncodeToString(note.BodyCiphertext),
+		BodyNonce:                   hex.EncodeToString(note.BodyNonce),
+		EncryptedPasteKeyCiphertext: hex.EncodeToString(note.EncryptedKey),
+		EncryptedPasteKeyNonce:      hex.EncodeToString(note.EncryptedKeyNonce),
+		CreatedAt:                   note.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:                   note.ExpiresAt.Format(time.RFC3339),
+		LanguageID:                  note.LanguageID,
+		Attachments:                 attResp,
+	})
+}
+
 func (h *Handler) GetPaste(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -173,7 +259,23 @@ func (h *Handler) GetPaste(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.GetByID(c.Request.Context(), id)
+	meta, err := h.service.GetMetaByID(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			apierr.NotFound("paste not found or expired").Respond(c)
+			return
+		}
+		h.logger.Error("get paste meta failed", "error", err)
+		apierr.InternalError("failed to fetch paste").Respond(c)
+		return
+	}
+
+	if meta.BurnAfterRead {
+		apierr.New(http.StatusPreconditionRequired, apierr.CodePreconditionRequired, "use POST /pastes/:id/consume to reveal burn-after-read paste").Respond(c)
+		return
+	}
+
+	result, err := h.service.GetFullByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			apierr.NotFound("paste not found or expired").Respond(c)

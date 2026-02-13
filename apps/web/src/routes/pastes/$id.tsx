@@ -1,7 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
-import { api, getApiError, type GetPasteResponse, type PasteAttachment } from "@/lib/api";
+import {
+  api,
+  getApiError,
+  type GetPasteResponse,
+  type GetPasteMetaResponse,
+  type PasteAttachment,
+} from "@/lib/api";
 import {
   decryptPaste,
   decryptPasteWithKey,
@@ -42,10 +48,18 @@ export const Route = createFileRoute("/pastes/$id")({
   component: ViewPaste,
 });
 
-type Status = "loading" | "ready" | "not_found" | "missing_key" | "decrypt_error" | "rate_limited" | "error";
+type Status =
+  | "loading"
+  | "confirm_required"
+  | "ready"
+  | "not_found"
+  | "missing_key"
+  | "decrypt_error"
+  | "rate_limited"
+  | "error";
 
 const ERROR_STATES: Record<
-  Exclude<Status, "loading" | "ready">,
+  Exclude<Status, "loading" | "ready" | "confirm_required">,
   { title: string; description: string }
 > = {
   not_found: {
@@ -73,7 +87,11 @@ const ERROR_STATES: Record<
   },
 };
 
-function ErrorState({ status }: { status: Exclude<Status, "loading" | "ready"> }) {
+function ErrorState({
+  status,
+}: {
+  status: Exclude<Status, "loading" | "ready" | "confirm_required">;
+}) {
   const { title, description } = ERROR_STATES[status];
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
@@ -345,6 +363,84 @@ function formatRelativeExpiration(dateString: string): string {
   return RELATIVE_TIME_FORMATTER.format(Math.round(deltaSeconds / 2_592_000), "month");
 }
 
+function BurnConfirmInterstitial({
+  meta,
+  isLoggedIn,
+  isRevealing,
+  revealError,
+  onReveal,
+  onBack,
+}: {
+  meta: GetPasteMetaResponse;
+  isLoggedIn: boolean;
+  isRevealing: boolean;
+  revealError: string | null;
+  onReveal: () => void;
+  onBack: () => void;
+}) {
+  const relativeExpiry = formatRelativeExpiration(meta.expires_at);
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-10 space-y-6">
+      {isLoggedIn && (
+        <Link
+          to="/dashboard"
+          search={{ tab: "pastes" }}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← dashboard
+        </Link>
+      )}
+      <div className="space-y-1">
+        <p className="text-sm font-medium">
+          <span className="text-muted-foreground">$ </span>
+          burn-after-read paste
+        </p>
+        <p className="text-xs text-muted-foreground">
+          This paste will be permanently destroyed when revealed.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Reveal this paste?</CardTitle>
+          <CardDescription>
+            Revealing will permanently destroy this paste and any attachments.
+            This cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="text-muted-foreground">
+              expires {relativeExpiry}
+            </Badge>
+            {meta.attachment_count > 0 && (
+              <Badge variant="outline" className="text-muted-foreground">
+                {meta.attachment_count} attachment
+                {meta.attachment_count !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+          {revealError && (
+            <p className="text-sm text-destructive">{revealError}</p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="destructive"
+              onClick={onReveal}
+              disabled={isRevealing}
+            >
+              {isRevealing ? "Revealing..." : "Reveal"}
+            </Button>
+            <Button variant="outline" onClick={onBack} disabled={isRevealing}>
+              Back
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function ViewPaste() {
   const { isLoading } = useAuth();
 
@@ -362,6 +458,7 @@ function PasteContent() {
   const isLoggedIn = !!vaultKey;
 
   const [status, setStatus] = useState<Status>("loading");
+  const [meta, setMeta] = useState<GetPasteMetaResponse | null>(null);
   const [paste, setPaste] = useState<GetPasteResponse | null>(null);
   const [decrypted, setDecrypted] = useState<{
     title: string;
@@ -371,6 +468,8 @@ function PasteContent() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
 
   useEffect(() => {
     const update = () => setHashKey(getKeyFromHash());
@@ -380,13 +479,22 @@ function PasteContent() {
 
   useEffect(() => {
     setStatus("loading");
+    setMeta(null);
     setPaste(null);
     setDecrypted(null);
+    setRevealError(null);
 
     api
-      .getPaste(id)
+      .getPasteMeta(id)
       .then((data) => {
-        setPaste(data);
+        setMeta(data);
+        if (data.burn_after_read) {
+          setStatus("confirm_required");
+        } else {
+          return api.getPaste(id).then((full) => {
+            setPaste(full);
+          });
+        }
       })
       .catch((err) => {
         const apiErr = getApiError(err);
@@ -442,8 +550,54 @@ function PasteContent() {
     return <PageSkeleton />;
   }
 
+  if (status === "confirm_required" && meta) {
+    return (
+      <BurnConfirmInterstitial
+        meta={meta}
+        isLoggedIn={isLoggedIn}
+        isRevealing={isRevealing}
+        revealError={revealError}
+        onReveal={async () => {
+          setRevealError(null);
+          setIsRevealing(true);
+          try {
+            const data = await api.consumePaste(id);
+            setPaste(data);
+          } catch (err) {
+            const apiErr = getApiError(err);
+            if (apiErr?.code === "NOT_FOUND") {
+              setStatus("not_found");
+            } else if (apiErr?.code === "RATE_LIMITED") {
+              setStatus("rate_limited");
+            } else {
+              setRevealError("Failed to reveal paste. It may have expired.");
+            }
+          } finally {
+            setIsRevealing(false);
+          }
+        }}
+        onBack={() => {
+          if (isLoggedIn) {
+            navigate({ to: "/dashboard", search: { tab: "pastes" } });
+          } else {
+            navigate({ to: "/" });
+          }
+        }}
+      />
+    );
+  }
+
   if (status !== "ready") {
-    return <ErrorState status={status} />;
+    return (
+      <ErrorState
+        status={
+          status as Exclude<
+            Status,
+            "loading" | "ready" | "confirm_required"
+          >
+        }
+      />
+    );
   }
 
   const isOwnerView = hashKey === null;

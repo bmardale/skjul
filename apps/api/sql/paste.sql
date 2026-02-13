@@ -31,6 +31,23 @@ FROM notes
 WHERE id = $1
   AND expires_at > now();
 
+-- name: GetNoteMetaByID :one
+SELECT
+  n.id,
+  n.burn_after_read,
+  n.created_at,
+  n.expires_at,
+  n.language_id,
+  coalesce(a.attachment_count, 0)::bigint as attachment_count
+FROM notes n
+LEFT JOIN (
+  SELECT note_id, count(*)::bigint as attachment_count
+  FROM attachments
+  GROUP BY note_id
+) a ON n.id = a.note_id
+WHERE n.id = $1
+  AND n.expires_at > now();
+
 -- name: ListNotesByUserID :many
 SELECT
   n.id,

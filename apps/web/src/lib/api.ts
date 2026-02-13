@@ -110,6 +110,15 @@ export interface PasteAttachment {
   download_url: string;
 }
 
+export interface GetPasteMetaResponse {
+  id: string;
+  burn_after_read: boolean;
+  created_at: string;
+  expires_at: string;
+  language_id?: string;
+  attachment_count: number;
+}
+
 export interface GetPasteResponse {
   id: string;
   burn_after_read: boolean;
@@ -255,8 +264,16 @@ export const api = {
       .json<CreateAttachmentResponse>();
   },
 
+  getPasteMeta(id: string) {
+    return client.get(`api/v1/pastes/${id}/meta`).json<GetPasteMetaResponse>();
+  },
+
   getPaste(id: string) {
     return client.get(`api/v1/pastes/${id}`).json<GetPasteResponse>();
+  },
+
+  consumePaste(id: string) {
+    return client.post(`api/v1/pastes/${id}/consume`).json<GetPasteResponse>();
   },
 
   async uploadToPresignedUrl(url: string, encryptedBytes: Uint8Array): Promise<void> {

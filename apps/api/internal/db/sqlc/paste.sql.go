@@ -137,6 +137,47 @@ func (q *Queries) GetNoteByID(ctx context.Context, id uuid.UUID) (Note, error) {
 	return i, err
 }
 
+const getNoteMetaByID = `-- name: GetNoteMetaByID :one
+SELECT
+  n.id,
+  n.burn_after_read,
+  n.created_at,
+  n.expires_at,
+  n.language_id,
+  coalesce(a.attachment_count, 0)::bigint as attachment_count
+FROM notes n
+LEFT JOIN (
+  SELECT note_id, count(*)::bigint as attachment_count
+  FROM attachments
+  GROUP BY note_id
+) a ON n.id = a.note_id
+WHERE n.id = $1
+  AND n.expires_at > now()
+`
+
+type GetNoteMetaByIDRow struct {
+	ID              uuid.UUID
+	BurnAfterRead   bool
+	CreatedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	LanguageID      pgtype.Text
+	AttachmentCount int64
+}
+
+func (q *Queries) GetNoteMetaByID(ctx context.Context, id uuid.UUID) (GetNoteMetaByIDRow, error) {
+	row := q.db.QueryRow(ctx, getNoteMetaByID, id)
+	var i GetNoteMetaByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.BurnAfterRead,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.LanguageID,
+		&i.AttachmentCount,
+	)
+	return i, err
+}
+
 const getNoteUserID = `-- name: GetNoteUserID :one
 SELECT user_id FROM notes WHERE id = $1 AND expires_at > now()
 `

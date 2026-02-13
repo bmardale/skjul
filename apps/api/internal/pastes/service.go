@@ -117,7 +117,46 @@ type GetByIDResult struct {
 	Attachments []AttachmentWithURL
 }
 
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, error) {
+type MetaByIDResult struct {
+	ID              uuid.UUID
+	BurnAfterRead   bool
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	LanguageID      string
+	AttachmentCount int64
+}
+
+func (s *Service) GetMetaByID(ctx context.Context, id uuid.UUID) (*MetaByIDResult, error) {
+	row, err := s.queries.GetNoteMetaByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get note meta: %w", err)
+	}
+	langID := "plaintext"
+	if row.LanguageID.Valid {
+		langID = row.LanguageID.String
+	}
+	return &MetaByIDResult{
+		ID:              row.ID,
+		BurnAfterRead:   row.BurnAfterRead,
+		CreatedAt:       row.CreatedAt.Time,
+		ExpiresAt:       row.ExpiresAt.Time,
+		LanguageID:      langID,
+		AttachmentCount: row.AttachmentCount,
+	}, nil
+}
+
+func (s *Service) GetFullByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, error) {
+	return s.getByIDInternal(ctx, id, false)
+}
+
+func (s *Service) ConsumeByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, error) {
+	return s.getByIDInternal(ctx, id, true)
+}
+
+func (s *Service) getByIDInternal(ctx context.Context, id uuid.UUID, burnIfBurnAfterRead bool) (*GetByIDResult, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -139,7 +178,8 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, er
 		return nil, fmt.Errorf("list attachments: %w", err)
 	}
 
-	if row.BurnAfterRead && s.s3Client != nil {
+	shouldBurn := row.BurnAfterRead && burnIfBurnAfterRead
+	if shouldBurn && s.s3Client != nil {
 		s3Keys := make([]string, 0, len(attachmentRows))
 		for _, r := range attachmentRows {
 			s3Keys = append(s3Keys, r.S3Key)
@@ -151,7 +191,7 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*GetByIDResult, er
 		}
 	}
 
-	if row.BurnAfterRead {
+	if shouldBurn {
 		if err := qtx.DeleteNoteByID(ctx, id); err != nil {
 			return nil, fmt.Errorf("burn note: %w", err)
 		}

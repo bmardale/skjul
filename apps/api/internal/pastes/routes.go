@@ -16,6 +16,8 @@ func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger, a
 	handler := NewHandler(svc, logger)
 
 	r.GET("/pastes/:id", handler.GetPaste)
+	r.GET("/pastes/:id/meta", handler.GetPasteMeta)
+	r.POST("/pastes/:id/consume", handler.ConsumePaste)
 
 	protected := r.Group("")
 	protected.Use(auth.RequireAuth(authSvc))

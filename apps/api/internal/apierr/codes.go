@@ -14,4 +14,5 @@ const (
 	CodeAttachmentLimit     = "ATTACHMENT_LIMIT"
 	CodeAttachmentSizeLimit = "ATTACHMENT_SIZE_LIMIT"
 	CodeRateLimited         = "RATE_LIMITED"
+	CodePreconditionRequired = "PRECONDITION_REQUIRED"
 )
