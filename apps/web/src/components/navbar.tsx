@@ -67,7 +67,7 @@ export function Navbar() {
         size="icon-sm"
         render={
           <a
-            href="https://github.com/skjul/skjul"
+            href="https://github.com/bmardale/skjul"
             target="_blank"
             rel="noreferrer"
           />
@@ -105,7 +105,9 @@ export function Navbar() {
         </>
       ) : (
         <>
-          <DropdownMenuItem render={<Link to="/login" />}>Login</DropdownMenuItem>
+          <DropdownMenuItem render={<Link to="/login" />}>
+            Login
+          </DropdownMenuItem>
           <DropdownMenuItem render={<Link to="/register" />}>
             Register
           </DropdownMenuItem>
@@ -151,11 +153,7 @@ export function Navbar() {
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Open menu"
-                />
+                <Button variant="ghost" size="icon-sm" aria-label="Open menu" />
               }
             >
               <HugeiconsIcon icon={Menu01Icon} size={20} />
