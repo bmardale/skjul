@@ -172,7 +172,7 @@ export interface ApiError {
 }
 
 const client = ky.create({
-  prefixUrl: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080",
+  prefixUrl: import.meta.env.VITE_API_BASE_URL ?? "",
   credentials: "include",
   timeout: 15_000,
   hooks: {
@@ -209,71 +209,71 @@ export function getRateLimitMessage(err: unknown): string | undefined {
 
 export const api = {
   getPublicConfig() {
-    return client.get("api/v1/config").json<PublicConfig>();
+    return client.get("/api/v1/config").json<PublicConfig>();
   },
 
   register(data: RegisterRequest) {
-    return client.post("api/v1/auth/register", { json: data }).json<RegisterResponse>();
+    return client.post("/api/v1/auth/register", { json: data }).json<RegisterResponse>();
   },
 
   generateInvite() {
-    return client.post("api/v1/invitations").json<{ code: string }>();
+    return client.post("/api/v1/invitations").json<{ code: string }>();
   },
 
   listInvites() {
-    return client.get("api/v1/invitations").json<ListInvitationsResponse>();
+    return client.get("/api/v1/invitations").json<ListInvitationsResponse>();
   },
 
   loginChallenge(data: LoginChallengeRequest) {
     return client
-      .post("api/v1/auth/login/challenge", { json: data })
+      .post("/api/v1/auth/login/challenge", { json: data })
       .json<LoginChallengeResponse>();
   },
 
   login(data: LoginRequest) {
-    return client.post("api/v1/auth/login", { json: data }).json<LoginResponse>();
+    return client.post("/api/v1/auth/login", { json: data }).json<LoginResponse>();
   },
 
   logout() {
-    return client.post("api/v1/auth/logout").json<void>();
+    return client.post("/api/v1/auth/logout").json<void>();
   },
 
   me() {
-    return client.get("api/v1/me").json<MeResponse>();
+    return client.get("/api/v1/me").json<MeResponse>();
   },
 
   listSessions() {
-    return client.get("api/v1/sessions").json<SessionResponse[]>();
+    return client.get("/api/v1/sessions").json<SessionResponse[]>();
   },
 
   revokeSession(id: string) {
-    return client.delete(`api/v1/sessions/${id}`).json<void>();
+    return client.delete(`/api/v1/sessions/${id}`).json<void>();
   },
 
   deleteAccount() {
-    return client.delete("api/v1/me").json<void>();
+    return client.delete("/api/v1/me").json<void>();
   },
 
   createPaste(data: CreatePasteRequest) {
-    return client.post("api/v1/pastes", { json: data }).json<CreatePasteResponse>();
+    return client.post("/api/v1/pastes", { json: data }).json<CreatePasteResponse>();
   },
 
   createAttachment(pasteId: string, data: CreateAttachmentRequest) {
     return client
-      .post(`api/v1/pastes/${pasteId}/attachments`, { json: data })
+      .post(`/api/v1/pastes/${pasteId}/attachments`, { json: data })
       .json<CreateAttachmentResponse>();
   },
 
   getPasteMeta(id: string) {
-    return client.get(`api/v1/pastes/${id}/meta`).json<GetPasteMetaResponse>();
+    return client.get(`/api/v1/pastes/${id}/meta`).json<GetPasteMetaResponse>();
   },
 
   getPaste(id: string) {
-    return client.get(`api/v1/pastes/${id}`).json<GetPasteResponse>();
+    return client.get(`/api/v1/pastes/${id}`).json<GetPasteResponse>();
   },
 
   consumePaste(id: string) {
-    return client.post(`api/v1/pastes/${id}/consume`).json<GetPasteResponse>();
+    return client.post(`/api/v1/pastes/${id}/consume`).json<GetPasteResponse>();
   },
 
   async uploadToPresignedUrl(url: string, encryptedBytes: Uint8Array): Promise<void> {
@@ -294,28 +294,28 @@ export const api = {
 
   listPastes(cursor?: string) {
     const searchParams = cursor ? { cursor } : undefined;
-    return client.get("api/v1/pastes", { searchParams }).json<ListPastesResponse>();
+    return client.get("/api/v1/pastes", { searchParams }).json<ListPastesResponse>();
   },
 
   deletePaste(id: string) {
-    return client.delete(`api/v1/pastes/${id}`).json<void>();
+    return client.delete(`/api/v1/pastes/${id}`).json<void>();
   },
 
   adminListUsers() {
-    return client.get("api/v1/admin/users").json<AdminUserListItem[]>();
+    return client.get("/api/v1/admin/users").json<AdminUserListItem[]>();
   },
 
   adminGetUser(id: string) {
-    return client.get(`api/v1/admin/users/${id}`).json<AdminUserDetail>();
+    return client.get(`/api/v1/admin/users/${id}`).json<AdminUserDetail>();
   },
 
   adminDeleteUser(id: string) {
-    return client.delete(`api/v1/admin/users/${id}`).then(() => undefined);
+    return client.delete(`/api/v1/admin/users/${id}`).then(() => undefined);
   },
 
   adminUpdateInviteQuota(id: string, quota: number) {
     return client
-      .patch(`api/v1/admin/users/${id}/invite-quota`, { json: { quota } })
+      .patch(`/api/v1/admin/users/${id}/invite-quota`, { json: { quota } })
       .then(() => undefined);
   },
 } as const;
