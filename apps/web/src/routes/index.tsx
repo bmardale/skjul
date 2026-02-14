@@ -62,7 +62,6 @@ const steps = [
 function Index() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-        {/* ── Hero ── */}
         <section className="space-y-4">
           <div className="flex flex-wrap gap-1.5">
             {["zero-knowledge", "accounts", "open source", "paste sharing"].map(
@@ -100,7 +99,6 @@ function Index() {
 
         <Separator className="my-10" />
 
-        {/* ── Features ── */}
         <section className="space-y-4">
           <p className="text-xs text-muted-foreground uppercase tracking-widest">
             Features
@@ -126,7 +124,6 @@ function Index() {
 
         <Separator className="my-10" />
 
-        {/* ── How it works ── */}
         <section className="space-y-4">
           <p className="text-xs text-muted-foreground uppercase tracking-widest">
             How it works
@@ -153,7 +150,6 @@ function Index() {
 
         <Separator className="my-10" />
 
-        {/* ── Quickstart ── */}
         <section id="quickstart" className="space-y-4">
           <p className="text-xs text-muted-foreground uppercase tracking-widest">
             Quickstart
@@ -177,7 +173,6 @@ http://localhost:8080`}
 
         <Separator className="my-10" />
 
-        {/* ── Final CTA ── */}
         <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-medium">Ready to paste without trust?</p>
@@ -198,7 +193,6 @@ http://localhost:8080`}
 
         <Separator className="my-10" />
 
-        {/* ── Footer ── */}
         <footer className="text-xs text-muted-foreground space-y-2">
           <p>© {new Date().getFullYear()} skjul · E2E encrypted pastebin · MIT</p>
           <div className="flex gap-3">

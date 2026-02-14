@@ -46,6 +46,13 @@ import { PasteBody } from "@/components/paste-body";
 
 export const Route = createFileRoute("/pastes/$id")({
   component: ViewPaste,
+  head: () => ({
+    meta: [
+      {
+        title: "skjul - view paste",
+      },
+    ],
+  }),
 });
 
 type Status =

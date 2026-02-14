@@ -44,6 +44,13 @@ import { VaultUnlockDialog } from "@/components/vault-unlock-dialog";
 
 export const Route = createFileRoute("/new")({
   component: NewPaste,
+  head: () => ({
+    meta: [
+      {
+        title: "skjul - new paste",
+      },
+    ],
+  }),
 });
 
 const expirationOptions = [

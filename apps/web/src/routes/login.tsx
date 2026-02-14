@@ -19,6 +19,17 @@ import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
   component: Login,
+  head: () => ({
+    meta: [
+      {
+        title: "skjul - login",
+      },
+      {
+        name: "description",
+        content: "Sign in to access your encrypted pastes.",
+      },
+    ],
+  }),
 });
 
 const loginSchema = z.object({

@@ -40,6 +40,13 @@ export const Route = createFileRoute("/dashboard")({
     }
     return { tab: "account" as Tab };
   },
+  head: () => ({
+    meta: [
+      {
+        title: "skjul - dashboard",
+      },
+    ],
+  }),
   component: Dashboard,
 });
 

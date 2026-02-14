@@ -21,6 +21,17 @@ import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/register")({
   component: Register,
+  head: () => ({
+    meta: [
+      {
+        title: "skjul - register",
+      },
+      {
+        name: "description",
+        content: "Register to access your encrypted pastes.",
+      },
+    ],
+  }),
 });
 
 const registerSchema = z.object({
