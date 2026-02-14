@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/bmardale/skjul/internal/admin"
 	"github.com/bmardale/skjul/internal/apierr"
@@ -10,6 +11,7 @@ import (
 	"github.com/bmardale/skjul/internal/invitations"
 	"github.com/bmardale/skjul/internal/pastes"
 	"github.com/bmardale/skjul/internal/ratelimit"
+	"github.com/bmardale/skjul/internal/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,5 +48,10 @@ func (a *App) publicConfig(c *gin.Context) {
 }
 
 func (a *App) noRoute(c *gin.Context) {
-	apierr.ErrNotFound.Respond(c)
+	if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		apierr.ErrNotFound.Respond(c)
+		return
+	}
+
+	static.Handler().ServeHTTP(c.Writer, c.Request)
 }

@@ -34,12 +34,14 @@ type App struct {
 func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool, s3Client *storage.S3Client) *App {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-	}))
+	if len(cfg.HTTP.CORSAllowOrigins) > 0 {
+		router.Use(cors.New(cors.Config{
+			AllowOrigins:     cfg.HTTP.CORSAllowOrigins,
+			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+			AllowHeaders:     []string{"Content-Type", "Authorization"},
+			AllowCredentials: true,
+		}))
+	}
 
 	httpSrv := &http.Server{
 		Addr:         net.JoinHostPort(cfg.HTTP.Host, strconv.Itoa(cfg.HTTP.Port)),

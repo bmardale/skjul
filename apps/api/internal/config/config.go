@@ -68,11 +68,12 @@ type DatabaseConfig struct {
 }
 
 type HTTPConfig struct {
-	Host         string        `mapstructure:"host"`
-	Port         int           `mapstructure:"port"`
-	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout"`
-	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
+	Host             string        `mapstructure:"host"`
+	Port             int           `mapstructure:"port"`
+	ReadTimeout      time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout     time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout      time.Duration `mapstructure:"idle_timeout"`
+	CORSAllowOrigins []string      `mapstructure:"cors_allow_origins"`
 }
 
 type LoggerConfig struct {
@@ -129,7 +130,9 @@ func Load() (*Config, error) {
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("read config: %w", err)
+		}
 	}
 
 	var cfg Config

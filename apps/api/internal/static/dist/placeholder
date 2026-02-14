@@ -1,0 +1,1 @@
+this file exists so go:embed compiles without the frontend build output
