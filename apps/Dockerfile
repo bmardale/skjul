@@ -20,13 +20,14 @@ COPY --from=web-build /src/web/dist/ internal/static/dist/
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/skjul ./cmd/skjul
 
-FROM alpine:3.22
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates
 RUN adduser -D -u 1000 skjul
 
-WORKDIR /
-COPY --from=go-build /out/skjul /skjul
+WORKDIR /app
+COPY --from=go-build /out/skjul ./
+RUN chown skjul:skjul /app
 
 EXPOSE 8080
 USER skjul
-ENTRYPOINT ["/skjul"]
+ENTRYPOINT ["./skjul"]
