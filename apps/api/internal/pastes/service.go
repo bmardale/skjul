@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bmardale/skjul/internal/db/sqlc"
@@ -179,15 +180,15 @@ func (s *Service) getByIDInternal(ctx context.Context, id uuid.UUID, burnIfBurnA
 	}
 
 	shouldBurn := row.BurnAfterRead && burnIfBurnAfterRead
-	if shouldBurn && s.s3Client != nil {
-		s3Keys := make([]string, 0, len(attachmentRows))
+
+	presignedURLs := make(map[string]string)
+	if shouldBurn && s.s3Client != nil && len(attachmentRows) > 0 {
 		for _, r := range attachmentRows {
-			s3Keys = append(s3Keys, r.S3Key)
-		}
-		if len(s3Keys) > 0 {
-			if err := s.s3Client.DeleteObjects(ctx, s3Keys); err != nil {
-				return nil, fmt.Errorf("delete attachment objects: %w", err)
+			url, err := s.s3Client.GenerateDownloadURL(ctx, r.S3Key)
+			if err != nil {
+				return nil, fmt.Errorf("generate presigned download url: %w", err)
 			}
+			presignedURLs[r.S3Key] = url
 		}
 	}
 
@@ -201,11 +202,23 @@ func (s *Service) getByIDInternal(ctx context.Context, id uuid.UUID, burnIfBurnA
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
+	if shouldBurn && s.s3Client != nil && len(attachmentRows) > 0 {
+		s3Keys := make([]string, 0, len(attachmentRows))
+		for _, r := range attachmentRows {
+			s3Keys = append(s3Keys, r.S3Key)
+		}
+		s.scheduleS3Cleanup(s3Keys, s.s3Client.PresignDuration())
+	}
+
 	attachments := make([]AttachmentWithURL, 0, len(attachmentRows))
 	for _, r := range attachmentRows {
 		downloadURL := ""
 		if s.s3Client != nil {
-			downloadURL = s.s3Client.GetPublicURL(r.S3Key)
+			if shouldBurn {
+				downloadURL = presignedURLs[r.S3Key]
+			} else {
+				downloadURL = s.s3Client.GetPublicURL(r.S3Key)
+			}
 		}
 		attachments = append(attachments, AttachmentWithURL{
 			ID:                 r.ID,
@@ -446,6 +459,22 @@ type AttachmentWithURL struct {
 	MimeCiphertext     []byte
 	MimeNonce          []byte
 	DownloadURL        string
+}
+
+func (s *Service) scheduleS3Cleanup(keys []string, delay time.Duration) {
+	if s.s3Client == nil || len(keys) == 0 {
+		return
+	}
+
+	go func() {
+		time.Sleep(delay)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := s.s3Client.DeleteObjects(ctx, keys); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to cleanup S3 objects after delay: %v\n", err)
+		}
+	}()
 }
 
 func expiresAtFromString(now time.Time, exp string) (time.Time, error) {

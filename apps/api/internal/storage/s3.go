@@ -127,3 +127,19 @@ func (c *S3Client) DeleteObjects(ctx context.Context, keys []string) error {
 
 	return nil
 }
+
+func (c *S3Client) GenerateDownloadURL(ctx context.Context, key string) (string, error) {
+	presigned, err := c.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return "", fmt.Errorf("presign get object: %w", err)
+	}
+
+	return presigned.URL, nil
+}
+
+func (c *S3Client) PresignDuration() time.Duration {
+	return c.presignDur
+}
