@@ -1,37 +1,33 @@
 # skjul
 
-**skjul** /ʂʏlː/ — Norwegian for *hide*, *conceal*, or *secret place*
+**skjul** /skjuːˀl/ — Danish for *hide*, *conceal*, or *secret place*
 
-An end-to-end encrypted pastebin. Self-hostable. Zero knowledge.
+Zero-knowledge, end-to-end encrypted pastebin. Self-hostable.
 
 ## Features
 
-- **True E2E encryption** — Server never sees plaintext; keys stay in your browser
-- **Encrypted attachments** — Upload files to S3 with client-side encryption
-- **Burn after reading** — One-time notes that delete after first view
-- **Expiry** — Auto-delete after 30min to 30 days, or never
-- **Syntax highlighting** — 20+ languages with theme-aware Prism
-- **Share via URL** — Key in fragment (#key=...) never hits the server
+- **End-to-end encryption** — Server never sees plaintext; keys stay in your browser
+- **Encrypted attachments** — Client-side encrypted file uploads to S3
+- **Burn after reading** — Single-view notes that self-destruct
+- **Expiry** — 30 minutes to 30 days, or indefinite
+- **Syntax highlighting** — 20+ languages, theme-aware
+- **Share via URL** — Keys in fragment (`#key=...`) never touch the server
 
 ## Quick Start
 
 ```bash
-# With Docker Compose
+# Docker Compose
 docker-compose up -d
 
-# Or build the single binary
+# Single binary
 cd apps/web && bun install && bun run build
 cd ../api && go build -o skjul ./cmd/skjul
 ./skjul
 ```
 
-## Tech
+## Stack
 
-- **Frontend:** React + TypeScript + Vite + Tailwind
-- **Backend:** Go + Gin + PostgreSQL
+- **Frontend:** React, TypeScript, shadcn/ui
+- **Backend:** Go, Gin, PostgreSQL
 - **Crypto:** XChaCha20-Poly1305, Argon2id
 - **Storage:** S3-compatible (optional)
-
-## License
-
-MIT
