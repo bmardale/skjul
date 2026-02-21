@@ -105,7 +105,7 @@ function Register() {
 
         setVaultKey(vaultKey);
         await refetchUser();
-        navigate({ to: "/" });
+        navigate({ to: "/dashboard", search: { tab: "account" } });
       } catch (err) {
         const apiErr = getApiError(err);
         const rateLimitMsg = getRateLimitMessage(err);
