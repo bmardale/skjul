@@ -15,15 +15,36 @@ Zero-knowledge, end-to-end encrypted pastebin. Self-hostable.
 
 ## Quick Start
 
-```bash
-# Docker Compose
-docker-compose up -d
+### Docker (Recommended)
 
-# Single binary
+```bash
+# Pull and run from GitHub Container Registry
+docker-compose up -d
+```
+
+Edit `postgres` password in `docker-compose.yml`, then start:
+- Frontend: http://localhost:8080
+- Requires: PostgreSQL configured in `config.yaml`
+
+### Build from Source
+
+```bash
+# Build frontend
 cd apps/web && bun install && bun run build
+
+# Copy frontend dist to backend static assets
+cp -r dist ../api/internal/static/
+
+# Build backend (embeds frontend)
 cd ../api && go build -o skjul ./cmd/skjul
 ./skjul
 ```
+
+### Images
+
+Published to GitHub Container Registry (ghcr.io):
+- `ghcr.io/bmardale/skjul:latest` — Latest release
+- `ghcr.io/bmardale/skjul:vX.Y.Z` — Specific version tags
 
 ## Stack
 
