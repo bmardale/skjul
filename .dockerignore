@@ -3,11 +3,13 @@
 .cursor
 **/.DS_Store
 
-web/node_modules
-web/dist
-web/.vite
+**/node_modules
+**/dist
+**/.vite
+build/
+out/
 
 api/config.yaml
 api/config.yml
-.env
-.env.*
+**/.env
+**/.env.*

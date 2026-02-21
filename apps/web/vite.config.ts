@@ -11,26 +11,13 @@ export default defineConfig({
       target: "react",
       autoCodeSplitting: true,
     }),
-    react(),
+    react({
+      babel: {
+        plugins: ["babel-plugin-react-compiler"],
+      },
+    }),
     tailwindcss(),
   ],
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/")) {
-            return "react";
-          }
-          if (id.includes("node_modules/@tanstack/")) {
-            return "tanstack";
-          }
-          if (id.includes("node_modules/@noble/")) {
-            return "crypto";
-          }
-        },
-      },
-    },
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
