@@ -32,6 +32,10 @@ type App struct {
 }
 
 func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool, s3Client *storage.S3Client) *App {
+	if cfg.Environment == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	if len(cfg.HTTP.CORSAllowOrigins) > 0 {

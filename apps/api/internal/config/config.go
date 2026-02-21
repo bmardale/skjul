@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	Environment string            `mapstructure:"environment"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	HTTP        HTTPConfig        `mapstructure:"http"`
 	Logger      LoggerConfig      `mapstructure:"logger"`
@@ -87,6 +88,8 @@ func Load() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
+
+	v.SetDefault("environment", "development")
 
 	v.SetDefault("database.max_open_conns", 25)
 	v.SetDefault("database.max_idle_conns", 10)

@@ -1,3 +1,5 @@
+environment: "development"
+
 database:
     database_url: "postgres://user:password@localhost:5432/skjul?sslmode=disable"
     max_open_conns: 25
