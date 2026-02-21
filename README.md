@@ -4,8 +4,6 @@
 
 Zero-knowledge, end-to-end encrypted pastebin. Self-hostable.
 
-> ⚠️ **Security Disclaimer**: The cryptographic implementation has not been professionally audited. Use at your own risk for sensitive data.
-
 ## Features
 
 - **End-to-end encryption** — Server never sees plaintext; keys stay in your browser
@@ -48,3 +46,5 @@ cd ../api && go build -o skjul ./cmd/skjul
 - **Backend:** Go, Gin, PostgreSQL
 - **Crypto:** XChaCha20-Poly1305, Argon2id
 - **Storage:** S3-compatible (optional)
+
+> ⚠️ **Security Disclaimer**: The cryptographic implementation has not been professionally audited. Use at your own risk for sensitive data.
