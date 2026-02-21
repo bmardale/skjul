@@ -1,8 +1,6 @@
 package invitations
 
 import (
-	"log/slog"
-
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/config"
 	"github.com/bmardale/skjul/internal/db/sqlc"
@@ -10,10 +8,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, cfg config.InvitationsConfig, logger *slog.Logger) {
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, cfg config.InvitationsConfig) {
 	queries := sqlc.New(db)
 	svc := NewService(queries, db, cfg)
-	handler := NewHandler(svc, logger)
+	handler := NewHandler(svc)
 
 	protected := r.Group("")
 	protected.Use(auth.RequireAuth(authSvc))

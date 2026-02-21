@@ -1,7 +1,6 @@
 package invitations
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,11 +11,10 @@ import (
 
 type Handler struct {
 	service *Service
-	logger  *slog.Logger
 }
 
-func NewHandler(service *Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
 }
 
 func (h *Handler) GenerateInvite(c *gin.Context) {
@@ -28,8 +26,7 @@ func (h *Handler) GenerateInvite(c *gin.Context) {
 			apierr.New(http.StatusBadRequest, apierr.CodeInviteQuotaExceeded, "you have no invites remaining").Respond(c)
 			return
 		}
-		h.logger.Error("generate invite failed", "error", err)
-		apierr.InternalError("failed to generate invite").Respond(c)
+		apierr.Internal(c, err, "failed to generate invite", "generate_invite")
 		return
 	}
 
@@ -41,14 +38,12 @@ func (h *Handler) ListInvites(c *gin.Context) {
 
 	invites, err := h.service.ListInvites(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("list invites failed", "error", err)
-		apierr.InternalError("failed to list invites").Respond(c)
+		apierr.Internal(c, err, "failed to list invites", "list_invites")
 		return
 	}
 
 	remaining, err := h.service.GetRemainingQuota(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("get remaining quota failed", "error", err)
 		remaining = 0
 	}
 

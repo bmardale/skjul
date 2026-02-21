@@ -1,22 +1,19 @@
 package auth
 
 import (
-	"log/slog"
-
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RegisterRoutesOpts struct {
-	DB              *pgxpool.Pool
-	Logger          *slog.Logger
-	InvSvc          InvitationsService
-	AdminUsernames  []string
+	DB             *pgxpool.Pool
+	InvSvc         InvitationsService
+	AdminUsernames []string
 }
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger) *Service {
-	return RegisterRoutesWithOpts(r, RegisterRoutesOpts{DB: db, Logger: logger})
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool) *Service {
+	return RegisterRoutesWithOpts(r, RegisterRoutesOpts{DB: db})
 }
 
 func RegisterRoutesWithOpts(r *gin.RouterGroup, opts RegisterRoutesOpts) *Service {
@@ -24,9 +21,9 @@ func RegisterRoutesWithOpts(r *gin.RouterGroup, opts RegisterRoutesOpts) *Servic
 	svc := NewService(queries, opts.DB)
 	var handler *Handler
 	if opts.InvSvc != nil && opts.DB != nil {
-		handler = NewHandlerWithInvitations(svc, opts.InvSvc, opts.DB, opts.Logger, opts.AdminUsernames)
+		handler = NewHandlerWithInvitations(svc, opts.InvSvc, opts.DB, opts.AdminUsernames)
 	} else {
-		handler = NewHandler(svc, opts.Logger, opts.AdminUsernames)
+		handler = NewHandler(svc, opts.AdminUsernames)
 	}
 
 	r.POST("/auth/register", handler.Register)

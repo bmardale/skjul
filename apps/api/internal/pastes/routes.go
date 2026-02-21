@@ -1,8 +1,6 @@
 package pastes
 
 import (
-	"log/slog"
-
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/bmardale/skjul/internal/storage"
@@ -10,10 +8,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, logger *slog.Logger, authSvc *auth.Service, s3Client *storage.S3Client) {
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, s3Client *storage.S3Client) {
 	queries := sqlc.New(db)
 	svc := NewService(queries, db, s3Client)
-	handler := NewHandler(svc, logger)
+	handler := NewHandler(svc)
 
 	r.GET("/pastes/:id", handler.GetPaste)
 	r.GET("/pastes/:id/meta", handler.GetPasteMeta)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"net/http"
 	"slices"
 	"time"
@@ -32,16 +31,15 @@ type Handler struct {
 	service        *Service
 	invSvc         InvitationsService
 	db             *pgxpool.Pool
-	logger         *slog.Logger
 	adminUsernames []string
 }
 
-func NewHandler(service *Service, logger *slog.Logger, adminUsernames []string) *Handler {
-	return &Handler{service: service, logger: logger, adminUsernames: adminUsernames}
+func NewHandler(service *Service, adminUsernames []string) *Handler {
+	return &Handler{service: service, adminUsernames: adminUsernames}
 }
 
-func NewHandlerWithInvitations(service *Service, invSvc InvitationsService, db *pgxpool.Pool, logger *slog.Logger, adminUsernames []string) *Handler {
-	return &Handler{service: service, invSvc: invSvc, db: db, logger: logger, adminUsernames: adminUsernames}
+func NewHandlerWithInvitations(service *Service, invSvc InvitationsService, db *pgxpool.Pool, adminUsernames []string) *Handler {
+	return &Handler{service: service, invSvc: invSvc, db: db, adminUsernames: adminUsernames}
 }
 
 type registerRequest struct {
@@ -136,8 +134,7 @@ func (h *Handler) Register(c *gin.Context) {
 	if h.invSvc != nil && h.invSvc.RequireInviteCode() && h.db != nil {
 		tx, err := h.db.Begin(ctx)
 		if err != nil {
-			h.logger.Error("register: begin tx failed", "error", err)
-			apierr.InternalError("failed to create user").Respond(c)
+			apierr.Internal(c, err, "failed to create user", "register_begin_tx")
 			return
 		}
 		defer tx.Rollback(ctx)
@@ -148,8 +145,7 @@ func (h *Handler) Register(c *gin.Context) {
 				apierr.New(http.StatusConflict, apierr.CodeUsernameTaken, "username already taken").Respond(c)
 				return
 			}
-			h.logger.Error("register failed", "error", err)
-			apierr.InternalError("failed to create user").Respond(c)
+			apierr.Internal(c, err, "failed to create user", "register_with_tx")
 			return
 		}
 
@@ -159,14 +155,12 @@ func (h *Handler) Register(c *gin.Context) {
 				apierr.New(http.StatusBadRequest, apierr.CodeInvalidInviteCode, "invalid or already used invite code").Respond(c)
 				return
 			}
-			h.logger.Error("register: redeem invite failed", "error", err)
-			apierr.InternalError("failed to create user").Respond(c)
+			apierr.Internal(c, err, "failed to create user", "register_redeem_invite")
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			h.logger.Error("register: commit tx failed", "error", err)
-			apierr.InternalError("failed to create user").Respond(c)
+			apierr.Internal(c, err, "failed to create user", "register_commit_tx")
 			return
 		}
 	} else {
@@ -177,16 +171,14 @@ func (h *Handler) Register(c *gin.Context) {
 				apierr.New(http.StatusConflict, apierr.CodeUsernameTaken, "username already taken").Respond(c)
 				return
 			}
-			h.logger.Error("register failed", "error", err)
-			apierr.InternalError("failed to create user").Respond(c)
+			apierr.Internal(c, err, "failed to create user", "register")
 			return
 		}
 	}
 
 	result, err := h.service.Login(ctx, req.Username, req.AuthKey)
 	if err != nil {
-		h.logger.Error("register: auto-login failed", "error", err)
-		apierr.InternalError("failed to create session").Respond(c)
+		apierr.Internal(c, err, "failed to create session", "register_auto_login")
 		return
 	}
 
@@ -209,8 +201,7 @@ func (h *Handler) LoginChallenge(c *gin.Context) {
 			apierr.New(http.StatusUnauthorized, apierr.CodeInvalidCredentials, "invalid username or password").Respond(c)
 			return
 		}
-		h.logger.Error("login challenge failed", "error", err)
-		apierr.InternalError("failed to fetch login parameters").Respond(c)
+		apierr.Internal(c, err, "failed to fetch login parameters", "login_challenge")
 		return
 	}
 
@@ -232,8 +223,7 @@ func (h *Handler) Login(c *gin.Context) {
 			apierr.New(http.StatusUnauthorized, apierr.CodeInvalidCredentials, "invalid username or password").Respond(c)
 			return
 		}
-		h.logger.Error("login failed", "error", err)
-		apierr.InternalError("failed to authenticate").Respond(c)
+		apierr.Internal(c, err, "failed to authenticate", "login")
 		return
 	}
 
@@ -249,8 +239,7 @@ func (h *Handler) Me(c *gin.Context) {
 
 	user, err := h.service.GetUser(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("me: get user failed", "error", err)
-		apierr.InternalError("failed to fetch user").Respond(c)
+		apierr.Internal(c, err, "failed to fetch user", "get_me")
 		return
 	}
 
@@ -279,8 +268,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 
 	sessions, err := h.service.ListSessions(c.Request.Context(), userID, sessionID)
 	if err != nil {
-		h.logger.Error("list sessions failed", "error", err)
-		apierr.InternalError("failed to list sessions").Respond(c)
+		apierr.Internal(c, err, "failed to list sessions", "list_sessions")
 		return
 	}
 
@@ -307,8 +295,7 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteSessionByID(c.Request.Context(), userID, targetID); err != nil {
-		h.logger.Error("delete session failed", "error", err)
-		apierr.InternalError("failed to delete session").Respond(c)
+		apierr.Internal(c, err, "failed to delete session", "delete_session")
 		return
 	}
 
@@ -322,8 +309,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 	userID, _ := GetUserID(c)
 
 	if err := h.service.DeleteAccount(c.Request.Context(), userID); err != nil {
-		h.logger.Error("delete account failed", "error", err)
-		apierr.InternalError("failed to delete account").Respond(c)
+		apierr.Internal(c, err, "failed to delete account", "delete_account")
 		return
 	}
 

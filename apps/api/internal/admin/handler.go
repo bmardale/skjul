@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,11 +13,10 @@ import (
 
 type Handler struct {
 	queries *sqlc.Queries
-	logger  *slog.Logger
 }
 
-func NewHandler(queries *sqlc.Queries, logger *slog.Logger) *Handler {
-	return &Handler{queries: queries, logger: logger}
+func NewHandler(queries *sqlc.Queries) *Handler {
+	return &Handler{queries: queries}
 }
 
 type userListItem struct {
@@ -44,8 +42,7 @@ type updateInviteQuotaRequest struct {
 func (h *Handler) ListUsers(c *gin.Context) {
 	users, err := h.queries.ListAllUsers(c.Request.Context())
 	if err != nil {
-		h.logger.Error("list users failed", "error", err)
-		apierr.InternalError("failed to list users").Respond(c)
+		apierr.Internal(c, err, "failed to list users", "admin_list_users")
 		return
 	}
 
@@ -74,15 +71,13 @@ func (h *Handler) GetUser(c *gin.Context) {
 			apierr.NotFound("user not found").Respond(c)
 			return
 		}
-		h.logger.Error("get user failed", "error", err)
-		apierr.InternalError("failed to fetch user").Respond(c)
+		apierr.Internal(c, err, "failed to fetch user", "admin_get_user")
 		return
 	}
 
 	stats, err := h.queries.GetUserStats(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("get user stats failed", "error", err)
-		apierr.InternalError("failed to fetch user stats").Respond(c)
+		apierr.Internal(c, err, "failed to fetch user stats", "admin_get_user_stats")
 		return
 	}
 
@@ -104,8 +99,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 
 	if err := h.queries.DeleteUser(c.Request.Context(), id); err != nil {
-		h.logger.Error("delete user failed", "error", err)
-		apierr.InternalError("failed to delete user").Respond(c)
+		apierr.Internal(c, err, "failed to delete user", "admin_delete_user")
 		return
 	}
 
@@ -129,8 +123,7 @@ func (h *Handler) UpdateInviteQuota(c *gin.Context) {
 		ID:          id,
 		InviteQuota: req.Quota,
 	}); err != nil {
-		h.logger.Error("update invite quota failed", "error", err)
-		apierr.InternalError("failed to update invite quota").Respond(c)
+		apierr.Internal(c, err, "failed to update invite quota", "admin_update_invite_quota")
 		return
 	}
 

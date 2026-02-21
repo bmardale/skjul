@@ -1,17 +1,15 @@
 package admin
 
 import (
-	"log/slog"
-
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/db/sqlc"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, adminUsernames []string, logger *slog.Logger) {
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, adminUsernames []string) {
 	queries := sqlc.New(db)
-	handler := NewHandler(queries, logger)
+	handler := NewHandler(queries)
 
 	admin := r.Group("/admin")
 	admin.Use(auth.RequireAuth(authSvc))

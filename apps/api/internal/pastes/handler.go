@@ -3,7 +3,6 @@ package pastes
 import (
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -15,11 +14,10 @@ import (
 
 type Handler struct {
 	service *Service
-	logger  *slog.Logger
 }
 
-func NewHandler(service *Service, logger *slog.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
 }
 
 type createPasteRequest struct {
@@ -163,8 +161,7 @@ func (h *Handler) CreatePaste(c *gin.Context) {
 		languageID,
 	)
 	if err != nil {
-		h.logger.Error("create paste failed", "error", err)
-		apierr.InternalError("failed to create paste").Respond(c)
+		apierr.Internal(c, err, "failed to create paste", "create_paste")
 		return
 	}
 
@@ -188,8 +185,7 @@ func (h *Handler) GetPasteMeta(c *gin.Context) {
 			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
-		h.logger.Error("get paste meta failed", "error", err)
-		apierr.InternalError("failed to fetch paste meta").Respond(c)
+		apierr.Internal(c, err, "failed to fetch paste meta", "get_paste_meta")
 		return
 	}
 
@@ -216,8 +212,7 @@ func (h *Handler) ConsumePaste(c *gin.Context) {
 			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
-		h.logger.Error("consume paste failed", "error", err)
-		apierr.InternalError("failed to consume paste").Respond(c)
+		apierr.Internal(c, err, "failed to consume paste", "consume_paste")
 		return
 	}
 
@@ -265,8 +260,7 @@ func (h *Handler) GetPaste(c *gin.Context) {
 			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
-		h.logger.Error("get paste meta failed", "error", err)
-		apierr.InternalError("failed to fetch paste").Respond(c)
+		apierr.Internal(c, err, "failed to fetch paste", "get_paste_meta")
 		return
 	}
 
@@ -281,8 +275,7 @@ func (h *Handler) GetPaste(c *gin.Context) {
 			apierr.NotFound("paste not found or expired").Respond(c)
 			return
 		}
-		h.logger.Error("get paste failed", "error", err)
-		apierr.InternalError("failed to fetch paste").Respond(c)
+		apierr.Internal(c, err, "failed to fetch paste", "get_paste")
 		return
 	}
 
@@ -332,8 +325,7 @@ func (h *Handler) ListPastes(c *gin.Context) {
 
 	page, err := h.service.ListByUserPaginated(c.Request.Context(), userID, cursor, 10)
 	if err != nil {
-		h.logger.Error("list pastes failed", "error", err)
-		apierr.InternalError("failed to list pastes").Respond(c)
+		apierr.Internal(c, err, "failed to list pastes", "list_pastes")
 		return
 	}
 
@@ -374,8 +366,7 @@ func (h *Handler) DeletePaste(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteByID(c.Request.Context(), userID, id); err != nil {
-		h.logger.Error("delete paste failed", "error", err)
-		apierr.InternalError("failed to delete paste").Respond(c)
+		apierr.Internal(c, err, "failed to delete paste", "delete_paste")
 		return
 	}
 
@@ -451,8 +442,7 @@ func (h *Handler) CreateAttachment(c *gin.Context) {
 			apierr.New(http.StatusBadRequest, apierr.CodeAttachmentSizeLimit, "attachment size must not exceed 10MB").Respond(c)
 			return
 		}
-		h.logger.Error("create attachment failed", "error", err)
-		apierr.InternalError("failed to create attachment").Respond(c)
+		apierr.Internal(c, err, "failed to create attachment", "create_attachment")
 		return
 	}
 

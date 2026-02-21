@@ -15,6 +15,7 @@ import (
 
 	"github.com/bmardale/skjul/internal/config"
 	"github.com/bmardale/skjul/internal/db/sqlc"
+	"github.com/bmardale/skjul/internal/httpmw"
 	"github.com/bmardale/skjul/internal/pastes"
 	"github.com/bmardale/skjul/internal/storage"
 	"github.com/gin-contrib/cors"
@@ -37,7 +38,7 @@ func New(cfg *config.Config, logger *slog.Logger, db *pgxpool.Pool, s3Client *st
 	}
 
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(httpmw.ErrorHandling(logger))
 	if len(cfg.HTTP.CORSAllowOrigins) > 0 {
 		router.Use(cors.New(cors.Config{
 			AllowOrigins:     cfg.HTTP.CORSAllowOrigins,
