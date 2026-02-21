@@ -13,15 +13,13 @@ services:
       timeout: 5s
       retries: 20
     restart: unless-stopped
-
-  api:
+  skjul:
+    image: ghcr.io/bmardale/skjul:v0.1.2
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      DATABASE_DATABASE_URL: postgres://skjul:skjul_change_me@postgres:5432/skjul?sslmode=disable
-      HTTP_HOST: 0.0.0.0
-      HTTP_PORT: 8080
+    volumes:
+      - ./config.yaml:/home/nonroot/config.yaml:ro
     ports:
       - "8080:8080"
     restart: unless-stopped
