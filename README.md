@@ -4,6 +4,8 @@
 
 Zero-knowledge, end-to-end encrypted pastebin. Self-hostable.
 
+> ⚠️ **Security Disclaimer**: The cryptographic implementation has not been professionally audited. Use at your own risk for sensitive data.
+
 ## Features
 
 - **End-to-end encryption** — Server never sees plaintext; keys stay in your browser
@@ -39,12 +41,6 @@ cp -r dist ../api/internal/static/
 cd ../api && go build -o skjul ./cmd/skjul
 ./skjul
 ```
-
-### Images
-
-Published to GitHub Container Registry (ghcr.io):
-- `ghcr.io/bmardale/skjul:latest` — Latest release
-- `ghcr.io/bmardale/skjul:vX.Y.Z` — Specific version tags
 
 ## Stack
 
