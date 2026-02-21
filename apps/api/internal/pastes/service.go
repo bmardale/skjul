@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bmardale/skjul/internal/db/sqlc"
-	"github.com/bmardale/skjul/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -27,13 +26,21 @@ var (
 	ErrAttachmentSizeLimit = errors.New("attachment size exceeds 10MB limit")
 )
 
-type Service struct {
-	queries  *sqlc.Queries
-	db       *pgxpool.Pool
-	s3Client *storage.S3Client
+type ObjectStorage interface {
+	GenerateUploadURL(ctx context.Context, key string, size int64) (string, error)
+	GenerateDownloadURL(ctx context.Context, key string) (string, error)
+	DeleteObjects(ctx context.Context, keys []string) error
+	GetPublicURL(key string) string
+	PresignDuration() time.Duration
 }
 
-func NewService(queries *sqlc.Queries, db *pgxpool.Pool, s3Client *storage.S3Client) *Service {
+type Service struct {
+	queries  sqlc.Querier
+	db       *pgxpool.Pool
+	s3Client ObjectStorage
+}
+
+func NewService(queries sqlc.Querier, db *pgxpool.Pool, s3Client ObjectStorage) *Service {
 	return &Service{queries: queries, db: db, s3Client: s3Client}
 }
 
@@ -164,7 +171,7 @@ func (s *Service) getByIDInternal(ctx context.Context, id uuid.UUID, burnIfBurnA
 	}
 	defer tx.Rollback(ctx)
 
-	qtx := s.queries.WithTx(tx)
+	qtx := sqlc.New(tx)
 
 	row, err := qtx.GetNoteByID(ctx, id)
 	if err != nil {

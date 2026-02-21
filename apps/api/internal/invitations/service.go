@@ -28,12 +28,12 @@ var ErrInvalidInviteCode = &invalidInviteCodeError{}
 var ErrInviteQuotaExceeded = errors.New("invite quota exceeded")
 
 type Service struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 	db      *pgxpool.Pool
 	cfg     config.InvitationsConfig
 }
 
-func NewService(queries *sqlc.Queries, db *pgxpool.Pool, cfg config.InvitationsConfig) *Service {
+func NewService(queries sqlc.Querier, db *pgxpool.Pool, cfg config.InvitationsConfig) *Service {
 	return &Service{queries: queries, db: db, cfg: cfg}
 }
 
@@ -81,14 +81,14 @@ func (s *Service) RedeemInvite(ctx context.Context, code string, userID uuid.UUI
 }
 
 func (s *Service) RedeemInviteTx(ctx context.Context, tx pgx.Tx, code string, userID uuid.UUID) error {
-	return s.redeemInviteWithQueries(ctx, s.queries.WithTx(tx), code, userID)
+	return s.redeemInviteWithQueries(ctx, sqlc.New(tx), code, userID)
 }
 
-func (s *Service) redeemInviteWithQueries(ctx context.Context, q *sqlc.Queries, code string, userID uuid.UUID) error {
+func (s *Service) redeemInviteWithQueries(ctx context.Context, q sqlc.Querier, code string, userID uuid.UUID) error {
 	_, err := q.GetInvitationByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrInvalidInviteCode // implements auth.InvalidInviteCodeError via InvalidInviteCode() method
+			return ErrInvalidInviteCode
 		}
 		return fmt.Errorf("get invitation: %w", err)
 	}

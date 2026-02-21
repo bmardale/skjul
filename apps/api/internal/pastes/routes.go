@@ -3,12 +3,11 @@ package pastes
 import (
 	"github.com/bmardale/skjul/internal/auth"
 	"github.com/bmardale/skjul/internal/db/sqlc"
-	"github.com/bmardale/skjul/internal/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, s3Client *storage.S3Client) {
+func RegisterRoutes(r *gin.RouterGroup, db *pgxpool.Pool, authSvc *auth.Service, s3Client ObjectStorage) {
 	queries := sqlc.New(db)
 	svc := NewService(queries, db, s3Client)
 	handler := NewHandler(svc)

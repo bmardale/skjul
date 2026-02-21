@@ -23,11 +23,11 @@ var (
 )
 
 type Service struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 	db      *pgxpool.Pool
 }
 
-func NewService(queries *sqlc.Queries, db *pgxpool.Pool) *Service {
+func NewService(queries sqlc.Querier, db *pgxpool.Pool) *Service {
 	return &Service{queries: queries, db: db}
 }
 
@@ -46,10 +46,10 @@ func (s *Service) Register(ctx context.Context, username, authKey string, salt, 
 }
 
 func (s *Service) RegisterWithTx(ctx context.Context, tx pgx.Tx, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
-	return s.registerWithQueries(ctx, s.queries.WithTx(tx), username, authKey, salt, encryptedVaultKey, vaultKeyNonce)
+	return s.registerWithQueries(ctx, sqlc.New(tx), username, authKey, salt, encryptedVaultKey, vaultKeyNonce)
 }
 
-func (s *Service) registerWithQueries(ctx context.Context, q *sqlc.Queries, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
+func (s *Service) registerWithQueries(ctx context.Context, q sqlc.Querier, username, authKey string, salt, encryptedVaultKey, vaultKeyNonce []byte) (uuid.UUID, error) {
 	authHash, err := HashAuthKey(authKey)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("hash auth key: %w", err)
