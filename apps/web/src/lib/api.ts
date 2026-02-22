@@ -172,7 +172,7 @@ export interface ApiError {
 }
 
 const client = ky.create({
-  prefixUrl: import.meta.env.VITE_API_BASE_URL ?? "",
+  prefixUrl: import.meta.env.VITE_API_BASE_URL || "/",
   credentials: "include",
   timeout: 15_000,
   hooks: {
