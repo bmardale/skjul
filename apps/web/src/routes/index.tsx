@@ -82,11 +82,11 @@ function Index() {
         </p>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button size="lg" render={<Link to="/" />}>
+          <Button size="lg" render={<Link to="/new" />}>
             <HugeiconsIcon icon={CommandLineIcon} size={16} />
             Create a paste
           </Button>
-          <Button variant="outline" size="lg" render={<a href="#quickstart" />}>
+          <Button variant="outline" size="lg" render={<a href="https://github.com/bmardale/skjul?tab=readme-ov-file#quick-start" target="_blank" rel="noreferrer" />}>
             <HugeiconsIcon icon={ServerStack01Icon} size={16} />
             Self-host
           </Button>
