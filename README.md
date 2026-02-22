@@ -18,13 +18,16 @@ Zero-knowledge, end-to-end encrypted pastebin. Self-hostable.
 ### Docker (Recommended)
 
 ```bash
-# Pull and run from GitHub Container Registry
+# Download docker-compose.yml and config
+curl -O https://raw.githubusercontent.com/bmardale/skjul/refs/heads/main/docker-compose.yml
+curl -o config.yaml https://raw.githubusercontent.com/bmardale/skjul/refs/heads/main/config.example.yaml
+
+# Edit postgres password in docker-compose.yml and config.yaml, then start:
 docker-compose up -d
 ```
 
-Edit `postgres` password in `docker-compose.yml`, then start:
 - Frontend: http://localhost:8080
-- Requires: PostgreSQL configured in `config.yaml`
+- Database: PostgreSQL (credentials in `config.yaml` and `docker-compose.yml`)
 
 ### Build from Source
 

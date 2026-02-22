@@ -14,7 +14,7 @@ services:
       retries: 20
     restart: unless-stopped
   skjul:
-    image: ghcr.io/bmardale/skjul:v0.1.2
+    image: ghcr.io/bmardale/skjul:v0.1.3
     depends_on:
       postgres:
         condition: service_healthy
