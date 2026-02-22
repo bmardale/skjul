@@ -20,8 +20,13 @@ const (
 )
 
 func ErrorHandling(logger *slog.Logger) gin.HandlerFunc {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return func(c *gin.Context) {
 		startedAt := time.Now()
+		panicRecovered := false
 		requestID := strings.TrimSpace(c.GetHeader(requestIDHeader))
 		if requestID == "" {
 			requestID = uuid.NewString()
@@ -31,6 +36,7 @@ func ErrorHandling(logger *slog.Logger) gin.HandlerFunc {
 
 		defer func() {
 			if recovered := recover(); recovered != nil {
+				panicRecovered = true
 				panicErr := fmt.Errorf("panic: %v", recovered)
 				apierr.RecordWithStack(c, panicErr, "panic_recovered", string(debug.Stack()))
 				if !c.Writer.Written() {
@@ -41,7 +47,7 @@ func ErrorHandling(logger *slog.Logger) gin.HandlerFunc {
 			}
 
 			status := c.Writer.Status()
-			if status < http.StatusInternalServerError {
+			if status < http.StatusInternalServerError && !panicRecovered {
 				return
 			}
 

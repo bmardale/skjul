@@ -113,3 +113,37 @@ func TestErrorHandling_RecoversPanicAndLogs(t *testing.T) {
 		t.Fatalf("expected panic stack in log")
 	}
 }
+
+func TestErrorHandling_RecoversPanicAfterWriteAndLogs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+
+	router := gin.New()
+	router.Use(ErrorHandling(logger))
+	router.GET("/panic-after-write", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.WriteString("partial")
+		panic("boom")
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/panic-after-write", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status to stay 200 after partial write, got %d", rec.Code)
+	}
+
+	logs := logBuffer.String()
+	if !strings.Contains(logs, "\"msg\":\"request failed\"") {
+		t.Fatalf("expected panic-after-write to produce centralized error log")
+	}
+	if !strings.Contains(logs, "\"op\":\"panic_recovered\"") {
+		t.Fatalf("expected panic op in log")
+	}
+	if !strings.Contains(logs, "\"status\":200") {
+		t.Fatalf("expected log status to reflect already-written response")
+	}
+}
